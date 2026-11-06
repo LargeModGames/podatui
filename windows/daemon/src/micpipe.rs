@@ -23,8 +23,8 @@ const IOCTL_PODATUI_MIC_STATUS: u32 = 0x0022_6004;
 /// `AudioCodec` service (drivers/mic), PortCls is `PodatuiMicPC` (drivers/mic-portcls).
 pub fn driver_kind() -> &'static str {
     use windows_sys::Win32::System::Services::{
-        CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus,
-        SC_MANAGER_CONNECT, SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
+        CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_MANAGER_CONNECT,
+        SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
     };
     let running = |name: &str| -> bool {
         let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();

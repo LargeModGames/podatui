@@ -6,17 +6,17 @@ use std::io;
 use std::ptr;
 use std::sync::Arc;
 
+use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
-    DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, SP_DEVICE_INTERFACE_DATA,
-    SP_DEVICE_INTERFACE_DETAIL_DATA_W, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInterfaces,
-    SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
+    SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW,
+    SetupDiGetDeviceInterfaceDetailW, DIGCF_DEVICEINTERFACE, DIGCF_PRESENT,
+    SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::IO::DeviceIoControl;
-use windows_sys::core::GUID;
 
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
@@ -63,7 +63,13 @@ fn ioctl(handle: HANDLE, code: u32, input: &[u8], output: &mut [u8]) -> io::Resu
             output.as_mut_ptr() as *mut c_void
         };
         if DeviceIoControl(
-            handle, code, in_ptr, input.len() as u32, out_ptr, output.len() as u32, &mut returned,
+            handle,
+            code,
+            in_ptr,
+            input.len() as u32,
+            out_ptr,
+            output.len() as u32,
+            &mut returned,
             ptr::null_mut(),
         ) == 0
         {
@@ -180,15 +186,29 @@ fn open_driver() -> io::Result<HANDLE> {
 
         let mut required: u32 = 0;
         SetupDiGetDeviceInterfaceDetailW(
-            devinfo, &ifdata, ptr::null_mut(), 0, &mut required, ptr::null_mut(),
+            devinfo,
+            &ifdata,
+            ptr::null_mut(),
+            0,
+            &mut required,
+            ptr::null_mut(),
         );
 
         let mut buf = vec![0u8; required as usize];
         let detail = buf.as_mut_ptr() as *mut SP_DEVICE_INTERFACE_DETAIL_DATA_W;
-        (*detail).cbSize = if cfg!(target_pointer_width = "64") { 8 } else { 6 };
+        (*detail).cbSize = if cfg!(target_pointer_width = "64") {
+            8
+        } else {
+            6
+        };
 
         if SetupDiGetDeviceInterfaceDetailW(
-            devinfo, &ifdata, detail, required, ptr::null_mut(), ptr::null_mut(),
+            devinfo,
+            &ifdata,
+            detail,
+            required,
+            ptr::null_mut(),
+            ptr::null_mut(),
         ) == 0
         {
             SetupDiDestroyDeviceInfoList(devinfo);

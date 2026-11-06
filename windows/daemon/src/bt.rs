@@ -1,25 +1,29 @@
 //! Locate the paired AirPods and return their 48-bit Bluetooth address.
 
 use std::mem::{size_of, zeroed};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
+use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::Bluetooth::{
-    BLUETOOTH_DEVICE_INFO, BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS,
-    BLUETOOTH_RADIO_INFO, BluetoothFindDeviceClose, BluetoothFindFirstDevice,
-    BluetoothFindFirstRadio, BluetoothFindNextDevice, BluetoothFindNextRadio, BluetoothFindRadioClose,
-    BluetoothGetRadioInfo, BluetoothSetServiceState,
+    BluetoothFindDeviceClose, BluetoothFindFirstDevice, BluetoothFindFirstRadio,
+    BluetoothFindNextDevice, BluetoothFindNextRadio, BluetoothFindRadioClose,
+    BluetoothGetRadioInfo, BluetoothSetServiceState, BLUETOOTH_DEVICE_INFO,
+    BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS, BLUETOOTH_RADIO_INFO,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-use windows_sys::core::GUID;
 
 // Classic-audio service GUIDs — A2DP AudioSink + Handsfree.
 const AUDIO_SINK: GUID = GUID {
-    data1: 0x0000_110b, data2: 0, data3: 0x1000,
+    data1: 0x0000_110b,
+    data2: 0,
+    data3: 0x1000,
     data4: [0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb],
 };
 const HANDSFREE: GUID = GUID {
-    data1: 0x0000_111e, data2: 0, data3: 0x1000,
+    data1: 0x0000_111e,
+    data2: 0,
+    data3: 0x1000,
     data4: [0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb],
 };
 
@@ -35,20 +39,20 @@ pub fn set_audio_connected(mac: u64, connect: bool) -> bool {
             None => return false,
         };
         let flags: u32 = if connect { 1 } else { 0 }; // ENABLE / DISABLE
-        // Try EVERY radio, not just the first.
-        //
-        // This machine has two (a disabled Realtek and the live Intel), and
-        // `BluetoothFindFirstRadio` hands back whichever the enumerator lists
-        // first — which need not be the one the AirPods are paired through. Every
-        // `set_audio_connected` in the log had failed, on every session, which is
-        // exactly what aiming these calls at the wrong radio looks like. Walking
-        // the list costs a handle per radio and makes the call correct on any
-        // machine with more than one adapter (docking stations, USB dongles
-        // alongside a built-in).
-        //
-        // Enable BOTH A2DP (stereo output) and Handsfree so at least one audio
-        // endpoint always comes up — enabling only A2DP left the user with NO sound
-        // when A2DP alone failed to connect (no HFP fallback).
+                                                      // Try EVERY radio, not just the first.
+                                                      //
+                                                      // This machine has two (a disabled Realtek and the live Intel), and
+                                                      // `BluetoothFindFirstRadio` hands back whichever the enumerator lists
+                                                      // first — which need not be the one the AirPods are paired through. Every
+                                                      // `set_audio_connected` in the log had failed, on every session, which is
+                                                      // exactly what aiming these calls at the wrong radio looks like. Walking
+                                                      // the list costs a handle per radio and makes the call correct on any
+                                                      // machine with more than one adapter (docking stations, USB dongles
+                                                      // alongside a built-in).
+                                                      //
+                                                      // Enable BOTH A2DP (stereo output) and Handsfree so at least one audio
+                                                      // endpoint always comes up — enabling only A2DP left the user with NO sound
+                                                      // when A2DP alone failed to connect (no HFP fallback).
         let mut rparams: BLUETOOTH_FIND_RADIO_PARAMS = zeroed();
         rparams.dwSize = size_of::<BLUETOOTH_FIND_RADIO_PARAMS>() as u32;
         let mut hradio: HANDLE = std::ptr::null_mut();
@@ -63,8 +67,12 @@ pub fn set_audio_connected(mac: u64, connect: bool) -> bool {
             let a = BluetoothSetServiceState(hradio, &dev, &AUDIO_SINK, flags);
             let b = BluetoothSetServiceState(hradio, &dev, &HANDSFREE, flags);
             CloseHandle(hradio);
-            if a < best_a { best_a = a; }
-            if b < best_b { best_b = b; }
+            if a < best_a {
+                best_a = a;
+            }
+            if b < best_b {
+                best_b = b;
+            }
             any |= a == 0 || b == 0;
             hradio = std::ptr::null_mut();
             if BluetoothFindNextRadio(hfind, &mut hradio) == 0 {
@@ -260,7 +268,7 @@ const AAP_NAME_HINTS: &[&str] = &["airpod", "beats"];
 /// `7&3549f023&2&282D7FB83C8B_C00000000`. Readable without admin.
 fn aap_service_addresses() -> Vec<u64> {
     use windows_sys::Win32::System::Registry::{
-        HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegEnumKeyExW, RegOpenKeyExW,
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
     };
     const BTHENUM: &str = r"SYSTEM\CurrentControlSet\Enum\BTHENUM";
     const AAP_PREFIX: &str = "{74ec2172-0bad-4d01-8f77-997b2be0722a}";
@@ -272,8 +280,14 @@ fn aap_service_addresses() -> Vec<u64> {
         loop {
             let mut len = buf.len() as u32;
             let r = RegEnumKeyExW(
-                key, i, buf.as_mut_ptr(), &mut len,
-                std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(),
+                key,
+                i,
+                buf.as_mut_ptr(),
+                &mut len,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             );
             if r != 0 {
                 break;
@@ -291,7 +305,9 @@ fn aap_service_addresses() -> Vec<u64> {
 
     let mut addrs = Vec::new();
     unsafe {
-        let Some(root) = open(HKEY_LOCAL_MACHINE, BTHENUM) else { return addrs };
+        let Some(root) = open(HKEY_LOCAL_MACHINE, BTHENUM) else {
+            return addrs;
+        };
         for dev in subkeys(root) {
             if !dev.to_ascii_lowercase().starts_with(AAP_PREFIX) {
                 continue;
@@ -325,8 +341,15 @@ fn aap_service_addresses() -> Vec<u64> {
 pub fn find_airpods() -> Option<(u64, String)> {
     let aap = aap_service_addresses();
     let clean = |name: &str| {
-        let n = name.trim_end_matches("- Find My").trim_end_matches(" -").trim();
-        if n.is_empty() { "AirPods".to_string() } else { n.to_string() }
+        let n = name
+            .trim_end_matches("- Find My")
+            .trim_end_matches(" -")
+            .trim();
+        if n.is_empty() {
+            "AirPods".to_string()
+        } else {
+            n.to_string()
+        }
     };
     let mut by_service = None;
     let mut by_name = None;

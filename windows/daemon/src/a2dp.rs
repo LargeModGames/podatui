@@ -6,13 +6,13 @@
 
 use std::mem::{size_of, zeroed};
 
+use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::Bluetooth::{
-    BLUETOOTH_DEVICE_INFO, BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS,
     BluetoothFindDeviceClose, BluetoothFindFirstDevice, BluetoothFindFirstRadio,
     BluetoothFindNextDevice, BluetoothFindRadioClose, BluetoothSetServiceState,
+    BLUETOOTH_DEVICE_INFO, BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-use windows_sys::core::GUID;
 
 // AudioSink (A2DP) — the service the AirPods actually expose for audio (0x110B).
 // (0x110D AdvancedAudioDistribution isn't an installed service here -> ERROR 1060.)

@@ -33,10 +33,18 @@ pub fn next_gen() -> u64 {
 }
 
 // AAP hearing-assist enable/disable (0x09 control commands 0x2C / 0x33).
-const HA_ON_2C: [u8; 11] = [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x2C, 0x01, 0x01, 0x00, 0x00];
-const HA_ON_33: [u8; 11] = [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x33, 0x01, 0x00, 0x00, 0x00];
-const HA_OFF_2C: [u8; 11] = [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x2C, 0x01, 0x02, 0x00, 0x00];
-const HA_OFF_33: [u8; 11] = [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x33, 0x02, 0x00, 0x00, 0x00];
+const HA_ON_2C: [u8; 11] = [
+    0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x2C, 0x01, 0x01, 0x00, 0x00,
+];
+const HA_ON_33: [u8; 11] = [
+    0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x33, 0x01, 0x00, 0x00, 0x00,
+];
+const HA_OFF_2C: [u8; 11] = [
+    0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x2C, 0x01, 0x02, 0x00, 0x00,
+];
+const HA_OFF_33: [u8; 11] = [
+    0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x33, 0x02, 0x00, 0x00, 0x00,
+];
 
 const H_SETTINGS: u16 = 0x002A; // hearing-aid settings characteristic
 const H_CCCD: u16 = 0x002B; // its client-config descriptor
@@ -137,8 +145,16 @@ fn write_settings(
         val[OFF_MODE] = 0x64;
     }
     for i in 0..8usize {
-        put_f32(&mut val, OFF_LEFT_EQ + i * 4, *left_eq.get(i).unwrap_or(&0.0));
-        put_f32(&mut val, OFF_RIGHT_EQ + i * 4, *right_eq.get(i).unwrap_or(&0.0));
+        put_f32(
+            &mut val,
+            OFF_LEFT_EQ + i * 4,
+            *left_eq.get(i).unwrap_or(&0.0),
+        );
+        put_f32(
+            &mut val,
+            OFF_RIGHT_EQ + i * 4,
+            *right_eq.get(i).unwrap_or(&0.0),
+        );
     }
     put_f32(&mut val, OFF_LEFT_AMP, left_amp);
     put_f32(&mut val, OFF_LEFT_TONE, tone);
@@ -153,7 +169,11 @@ fn write_settings(
     // 3) Write it back.
     let _ = drv.att_send(&att_write_pdu(H_SETTINGS, &val));
     let wn = drv.att_recv(ATT_TIMEOUT_MS, &mut b).unwrap_or(0);
-    let wr = if wn >= 1 && b[0] == 0x13 { "ok" } else { "no-resp" };
+    let wr = if wn >= 1 && b[0] == 0x13 {
+        "ok"
+    } else {
+        "no-resp"
+    };
 
     Ok(format!(
         "hearing aid ON: wrote {} bytes leftAmp={left_amp:.2} rightAmp={right_amp:.2} conv={conv_boost} eqL={left_eq:?} write={wr}",
@@ -203,7 +223,15 @@ pub fn apply(
     }
 
     match write_settings(
-        drv, left_eq, right_eq, amplification, balance, tone, conv_boost, anr, own_voice,
+        drv,
+        left_eq,
+        right_eq,
+        amplification,
+        balance,
+        tone,
+        conv_boost,
+        anr,
+        own_voice,
     ) {
         Ok(s) => Ok(s),
         // The ATT channel may have idle-closed since we last used it — re-run the
@@ -211,7 +239,15 @@ pub fn apply(
         Err(e) => {
             enable_handshake(drv);
             write_settings(
-                drv, left_eq, right_eq, amplification, balance, tone, conv_boost, anr, own_voice,
+                drv,
+                left_eq,
+                right_eq,
+                amplification,
+                balance,
+                tone,
+                conv_boost,
+                anr,
+                own_voice,
             )
             .map_err(|e2| format!("{e}; after re-enable: {e2}"))
         }

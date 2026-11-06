@@ -85,7 +85,8 @@ fn is_airpods(args: &BluetoothLEAdvertisementReceivedEventArgs) -> bool {
             let len = buf.Length().unwrap_or(0) as usize;
             if let Ok(reader) = DataReader::FromBuffer(&buf) {
                 let mut bytes = vec![0u8; len];
-                if reader.ReadBytes(&mut bytes).is_ok() && bytes.first() == Some(&PROXIMITY_PAIRING) {
+                if reader.ReadBytes(&mut bytes).is_ok() && bytes.first() == Some(&PROXIMITY_PAIRING)
+                {
                     return true;
                 }
             }

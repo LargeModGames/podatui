@@ -7,11 +7,11 @@
 use windows::core::Interface;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
-    AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator,
-    MMDeviceEnumerator, eConsole, eRender,
+    eConsole, eRender, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2,
+    IMMDeviceEnumerator, MMDeviceEnumerator,
 };
 use windows::Win32::System::Com::{
-    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
 
 /// Join the process MTA for the calling thread. Idempotent-safe (a second call
@@ -62,7 +62,9 @@ pub fn is_muted() -> bool {
 
 pub fn toggle_mute() {
     if let Ok(vol) = endpoint() {
-        let new = !unsafe { vol.GetMute() }.map(|b| b.as_bool()).unwrap_or(false);
+        let new = !unsafe { vol.GetMute() }
+            .map(|b| b.as_bool())
+            .unwrap_or(false);
         unsafe {
             let _ = vol.SetMute(new, std::ptr::null());
         }
@@ -91,11 +93,9 @@ pub fn toggle_mute() {
 /// know. Returns false on any COM failure — never claim ownership on a guess.
 pub fn any_render_active() -> bool {
     unsafe {
-        let Ok(enumerator) = CoCreateInstance::<_, IMMDeviceEnumerator>(
-            &MMDeviceEnumerator,
-            None,
-            CLSCTX_ALL,
-        ) else {
+        let Ok(enumerator) =
+            CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+        else {
             return false;
         };
         let Ok(device) = enumerator.GetDefaultAudioEndpoint(eRender, eConsole) else {

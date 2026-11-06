@@ -44,8 +44,8 @@ use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptor
 use windows_sys::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile, PIPE_ACCESS_DUPLEX};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
-    PIPE_WAIT,
+    ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
+    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::CreateMutexW;
 
@@ -108,7 +108,12 @@ fn battery_text(b: &podatui_ipc::Battery, connected: bool) -> String {
         return "Disconnected".to_string();
     }
     let f = |v: Option<u8>| v.map(|p| format!("{p}%")).unwrap_or_else(|| "—".into());
-    format!("Left {}   Right {}   Case {}", f(b.left), f(b.right), f(b.case))
+    format!(
+        "Left {}   Right {}   Case {}",
+        f(b.left),
+        f(b.right),
+        f(b.case)
+    )
 }
 
 /// Owns a client's pipe HANDLE; closes it once both the reader and writer
@@ -293,8 +298,15 @@ fn client_reader(pipe: Arc<Pipe>, ctx: Ctx) {
     let mut acc = String::new();
     loop {
         let mut read = 0u32;
-        let ok =
-            unsafe { ReadFile(h, buf.as_mut_ptr(), buf.len() as u32, &mut read, ptr::null_mut()) };
+        let ok = unsafe {
+            ReadFile(
+                h,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+                &mut read,
+                ptr::null_mut(),
+            )
+        };
         if ok == 0 || read == 0 {
             break; // disconnected
         }
@@ -463,8 +475,15 @@ fn l2cap_reader(pipe: Arc<Pipe>, ctx: Ctx) {
     let mut buf = [0u8; 4096];
     loop {
         let mut read = 0u32;
-        let ok =
-            unsafe { ReadFile(h, buf.as_mut_ptr(), buf.len() as u32, &mut read, ptr::null_mut()) };
+        let ok = unsafe {
+            ReadFile(
+                h,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+                &mut read,
+                ptr::null_mut(),
+            )
+        };
         if ok == 0 || read == 0 {
             break;
         }
@@ -604,9 +623,13 @@ fn audio_request(mac: u64, connect: bool, why: &'static str) {
         // not connected. The bool alone made the reclaim campaign undebuggable.
         Some(ok) => {
             let (a, b) = bt::last_service_codes();
-            log(&format!("bt: {why} {verb} audio = {ok} (AudioSink={a} Handsfree={b})"));
+            log(&format!(
+                "bt: {why} {verb} audio = {ok} (AudioSink={a} Handsfree={b})"
+            ));
         }
-        None => log(&format!("bt: {why} {verb} audio superseded by a newer request — skipped")),
+        None => log(&format!(
+            "bt: {why} {verb} audio superseded by a newer request — skipped"
+        )),
     });
 }
 
@@ -650,11 +673,15 @@ const RECLAIM_BACKOFF_MS: [u64; 8] = [1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 
 fn force_audio_rebuild(mac: u64) {
     let _ = bt::request_audio(mac, false);
     let (a, b) = bt::last_service_codes();
-    log(&format!("reclaim: forced rebuild — disable codes AudioSink={a} Handsfree={b}"));
+    log(&format!(
+        "reclaim: forced rebuild — disable codes AudioSink={a} Handsfree={b}"
+    ));
     thread::sleep(Duration::from_millis(1_000));
     let _ = bt::request_audio(mac, true);
     let (a, b) = bt::last_service_codes();
-    log(&format!("reclaim: forced rebuild — enable codes AudioSink={a} Handsfree={b}"));
+    log(&format!(
+        "reclaim: forced rebuild — enable codes AudioSink={a} Handsfree={b}"
+    ));
 }
 
 /// Reclaim the audio route after a lower-tier event on another device took the
@@ -665,7 +692,10 @@ fn spawn_reclaim(ctx: &Ctx, tier: Tier) {
     if ctx.reclaiming.swap(true, Ordering::SeqCst) {
         return; // a campaign is already running
     }
-    log(&format!("reclaim: host held tier {} — reclaiming the audio route", tier.label()));
+    log(&format!(
+        "reclaim: host held tier {} — reclaiming the audio route",
+        tier.label()
+    ));
     let ctx = ctx.clone();
     thread::spawn(move || {
         media::init(); // is_playing() needs COM on this thread too
@@ -813,7 +843,11 @@ fn set_heart_rate(ctx: &Ctx, on: bool) {
     let has_driver = ctx.driver_cell.lock().unwrap().is_some();
     log(&format!(
         "HR: set on={on} was={was} driver={}",
-        if has_driver { "connected" } else { "NONE(no session yet)" }
+        if has_driver {
+            "connected"
+        } else {
+            "NONE(no session yet)"
+        }
     ));
     if on && !was {
         spawn_hr_retry(ctx);
@@ -823,7 +857,11 @@ fn set_heart_rate(ctx: &Ctx, on: bool) {
             // Stop = interval 0 on both services (matching the start).
             let s = next_hr_seq() as u8;
             let _ = drv.send(&aap::hr_stream(s, aap::STREAM_HEART_RATE, 0));
-            let _ = drv.send(&aap::hr_stream(s.wrapping_add(1), aap::STREAM_HEART_RATE_LEGACY, 0));
+            let _ = drv.send(&aap::hr_stream(
+                s.wrapping_add(1),
+                aap::STREAM_HEART_RATE_LEGACY,
+                0,
+            ));
         }
         ctx.state.lock().unwrap().heart_rate = None;
         ctx.hr_db.end_session();
@@ -909,7 +947,11 @@ fn hr_retry_campaign(ctx: &Ctx) -> HrOutcome {
         // thibaup saw it vary — so set the 1 Hz interval on BOTH 84 and 19; the buds
         // ignore the wrong one, and the decoder catches the reports on 19/20/84.
         let s = next_hr_seq() as u8;
-        let _ = drv.send(&aap::hr_stream(s, aap::STREAM_HEART_RATE, aap::PERIOD_HEART_RATE_US)); // 84
+        let _ = drv.send(&aap::hr_stream(
+            s,
+            aap::STREAM_HEART_RATE,
+            aap::PERIOD_HEART_RATE_US,
+        )); // 84
         thread::sleep(Duration::from_millis(120));
         let _ = drv.send(&aap::hr_stream(
             s.wrapping_add(1),
@@ -942,12 +984,15 @@ fn hr_retry_campaign(ctx: &Ctx) -> HrOutcome {
         // that just re-opens the audio link for an optional feature. Give up after
         // HR_MAX_ATTEMPTS; the user toggles HR off/on to retry.
         if attempt >= HR_MAX_ATTEMPTS {
-            log("HR: no reading after the enable retries (ACKs only) — giving up; \
-                 toggle HR off/on to retry");
+            log(
+                "HR: no reading after the enable retries (ACKs only) — giving up; \
+                 toggle HR off/on to retry",
+            );
             ctx.overlay("Heart rate unavailable");
             return HrOutcome::GiveUp;
         }
-        let backoff = HR_RETRY_BACKOFF_MS[(attempt as usize - 1).min(HR_RETRY_BACKOFF_MS.len() - 1)];
+        let backoff =
+            HR_RETRY_BACKOFF_MS[(attempt as usize - 1).min(HR_RETRY_BACKOFF_MS.len() - 1)];
         let nap_until = Instant::now() + Duration::from_millis(backoff);
         while Instant::now() < nap_until && ctx.hr_on.load(Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(100));
@@ -1041,12 +1086,25 @@ fn apply_command(ctx: &Ctx, cmd: Command) {
                 let ctx2 = ctx.clone();
                 thread::spawn(move || {
                     match hearing::apply(
-                        &drv, gen, on, &left_eq, &right_eq, amplification, balance, tone,
-                        conversation_boost, ambient_noise_reduction, own_voice,
+                        &drv,
+                        gen,
+                        on,
+                        &left_eq,
+                        &right_eq,
+                        amplification,
+                        balance,
+                        tone,
+                        conversation_boost,
+                        ambient_noise_reduction,
+                        own_voice,
                     ) {
                         Ok(s) => {
                             log(&s);
-                            ctx2.overlay(if on { "Hearing aid on" } else { "Hearing aid off" });
+                            ctx2.overlay(if on {
+                                "Hearing aid on"
+                            } else {
+                                "Hearing aid off"
+                            });
                         }
                         Err(e) => log(&format!("hearing aid FAILED: {e}")),
                     }
@@ -1148,7 +1206,8 @@ impl MicStats {
     fn packet(&mut self, aus: u32, samples: usize) {
         let now = Instant::now();
         if let Some(prev) = self.last {
-            self.gaps_ms.push(now.duration_since(prev).as_secs_f64() * 1000.0);
+            self.gaps_ms
+                .push(now.duration_since(prev).as_secs_f64() * 1000.0);
         }
         self.last = Some(now);
         let start = *self.window_start.get_or_insert(now);
@@ -1161,7 +1220,11 @@ impl MicStats {
         }
         let mut g = std::mem::take(&mut self.gaps_ms);
         g.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let pct = |p: f64| g.get(((g.len() as f64 - 1.0) * p) as usize).copied().unwrap_or(0.0);
+        let pct = |p: f64| {
+            g.get(((g.len() as f64 - 1.0) * p) as usize)
+                .copied()
+                .unwrap_or(0.0)
+        };
         let over = |ms: f64| g.iter().filter(|&&x| x > ms).count();
         log(&format!(
             "mic stats: {:.1}s pkts={} aus={} ({:.2}/pkt) rate={:.0} Hz gap ms p50={:.1} p95={:.1} p99={:.1} max={:.1} >64ms={} >100ms={}",
@@ -1210,7 +1273,11 @@ fn run_receiver(ctx: Ctx) {
     let local_radios = bt::local_radio_addresses();
     log(&format!(
         "bt: local radio(s): {}",
-        local_radios.iter().map(|a| format!("{a:012x}")).collect::<Vec<_>>().join(", ")
+        local_radios
+            .iter()
+            .map(|a| format!("{a:012x}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     ));
     let mut last_case_present: Option<bool> = None;
     let mut pending_card = false;
@@ -1347,8 +1414,8 @@ fn run_receiver(ctx: Ctx) {
             }
         }
         hr_decoder.reset(); // fresh connection — drop any stale HR carry
-        // Re-arm the HR stream if the user had it on before the (re)connect —
-        // through the same retry path (the stream rarely starts first try).
+                            // Re-arm the HR stream if the user had it on before the (re)connect —
+                            // through the same retry path (the stream rarely starts first try).
         if ctx.hr_on.load(Ordering::Relaxed) {
             spawn_hr_retry(&ctx);
         }
@@ -1391,7 +1458,7 @@ fn run_receiver(ctx: Ctx) {
         let mut status_fails = 0u32;
         let mut low_warned = false; // low-battery overlay fired (hysteresis)
         let mut case_low_warned = false; // case low-battery overlay fired
-        // Per-bud ear status, to notify on the transition into the case.
+                                         // Per-bud ear status, to notify on the transition into the case.
         let mut prev_status = [aap::EarStatus::Disconnected; 2];
         // HR diagnostics (logged every ~3s while monitoring).
         let mut hr_last_log = Instant::now();
@@ -1400,9 +1467,9 @@ fn run_receiver(ctx: Ctx) {
         // 50 Hz type-16 raw-PPG flood, which shares the RTBuddy prefix).
         let mut hr_type19 = 0u32;
         let mut hr_type14 = 0u32; // activity-classifier (svc 14) frames
-        // Diagnose stale-"connected": throttled log of the raw driver status when
-        // it isn't a clean 2, so we can see what "cased" vs "both-out-resting"
-        // actually report (the teardown decision hinges on them differing).
+                                  // Diagnose stale-"connected": throttled log of the raw driver status when
+                                  // it isn't a clean 2, so we can see what "cased" vs "both-out-resting"
+                                  // actually report (the teardown decision hinges on them differing).
         let mut status_diag = Instant::now();
         // Zombie-channel detection. The channel can sit OPEN but silent for as long
         // as Windows still sees the AirPods (observed: 56 minutes) — `status_fails`
@@ -1638,7 +1705,11 @@ fn run_receiver(ctx: Ctx) {
                             ctx.overlay(&format!("Connected  ·  {batt_text}"));
                             pending_card = false;
                         } else if last_case_present.is_some_and(|prev| prev != present) {
-                            let ev = if present { "Case opened" } else { "Case closed" };
+                            let ev = if present {
+                                "Case opened"
+                            } else {
+                                "Case closed"
+                            };
                             ctx.overlay(&format!("{ev}  ·  {batt_text}"));
                         }
                         last_case_present = Some(present);
@@ -1647,7 +1718,10 @@ fn run_receiver(ctx: Ctx) {
                         // (hysteresis so it doesn't spam around the threshold).
                         let low = {
                             let s = ctx.state.lock().unwrap();
-                            [s.battery.left, s.battery.right].into_iter().flatten().min()
+                            [s.battery.left, s.battery.right]
+                                .into_iter()
+                                .flatten()
+                                .min()
                         };
                         if let Some(min) = low {
                             if min <= 20 && !low_warned {
@@ -1669,10 +1743,10 @@ fn run_receiver(ctx: Ctx) {
                     }
                     if let Some(m) = aap::parse_anc_mode(data) {
                         ctx.cache_replay(1, data); // replay to a newly-attached app
-                        // Ignore transitional echoes that don't match a recent user
-                        // command (the buds briefly report Off when switching modes
-                        // quickly). Accept once it matches, or when nothing is
-                        // pending / the window passed (an external change).
+                                                   // Ignore transitional echoes that don't match a recent user
+                                                   // command (the buds briefly report Off when switching modes
+                                                   // quickly). Accept once it matches, or when nothing is
+                                                   // pending / the window passed (an external change).
                         let accept = match *ctx.anc_cmd.lock().unwrap() {
                             Some((target, t)) if t.elapsed() < Duration::from_millis(1500) => {
                                 m == target
@@ -1765,8 +1839,16 @@ fn run_receiver(ctx: Ctx) {
                         // in-ear state for that bud instead of reading it as "out",
                         // so a bud being handled doesn't trigger a false auto-pause.
                         let new_ear = [
-                            if primary.is_transitional() { prev_ear[0] } else { primary.in_ear() },
-                            if secondary.is_transitional() { prev_ear[1] } else { secondary.in_ear() },
+                            if primary.is_transitional() {
+                                prev_ear[0]
+                            } else {
+                                primary.in_ear()
+                            },
+                            if secondary.is_transitional() {
+                                prev_ear[1]
+                            } else {
+                                secondary.in_ear()
+                            },
                         ];
                         if new_ear != prev_ear {
                             let all_in = new_ear[0] && new_ear[1];
@@ -1790,7 +1872,11 @@ fn run_receiver(ctx: Ctx) {
             }
             if !got_data {
                 // Tight while streaming (no ring underrun), throttle hard on idle.
-                let nap = if ctx.mic_on.load(Ordering::Relaxed) { 4 } else { 150 };
+                let nap = if ctx.mic_on.load(Ordering::Relaxed) {
+                    4
+                } else {
+                    150
+                };
                 thread::sleep(Duration::from_millis(nap));
             }
             // Hi-res mic stall handling. Linux PR #655 re-armed the uplink (STOP→START)
@@ -1823,7 +1909,9 @@ fn run_receiver(ctx: Ctx) {
                 } else if sent_at.elapsed() >= Duration::from_secs(5) {
                     probe_pending = None;
                     probe_misses += 1;
-                    log(&format!("keepalive: NO answer in 5s (miss {probe_misses}/2)"));
+                    log(&format!(
+                        "keepalive: NO answer in 5s (miss {probe_misses}/2)"
+                    ));
                     if probe_misses >= 2 {
                         probe_misses = 0;
                         // Two unanswered probes while audio should be playing: the
@@ -1840,8 +1928,7 @@ fn run_receiver(ctx: Ctx) {
             if probe_pending.is_none() && keepalive.elapsed() >= Duration::from_secs(30) {
                 keepalive = Instant::now();
                 let mode = ctx.state.lock().unwrap().anc;
-                if mode != 0
-                    && (ctx.mic_on.load(Ordering::Relaxed) || volume::any_render_active())
+                if mode != 0 && (ctx.mic_on.load(Ordering::Relaxed) || volume::any_render_active())
                 {
                     let baseline = last_data;
                     if driver.send(&aap::anc_command(mode)).is_ok() {
@@ -1903,22 +1990,22 @@ fn run_receiver(ctx: Ctx) {
                     // asks the real question.
                     let release = if bt::is_connected(mac) {
                         status_fails = 0; // still connected to Windows — keep the session
-                        // Connected, but the AAP channel may have stalled (not just idle).
-                        // If the hi-res mic is engaged and the channel has been silent for
-                        // a while, the mic uplink has died — rebuild the channel IN PLACE
-                        // (drop + reopen, which re-arms START_AUDIO on the handshake) to
-                        // recover it, WITHOUT toggling the OS audio, so the mic comes back
-                        // and the call isn't kicked. connect_requested stays set → the
-                        // outer loop reopens the L2CAP channel, no set_audio_connected.
-                        // Mic engaged but the AAP channel has gone silent — the uplink
-                        // may have stalled. NEVER drop the channel here: the user is on a
-                        // call, so a reconnect kicks it, and repeated drop+reopen churn
-                        // bricks the driver into Code 38 (a self-feeding "driver open
-                        // FAILED" loop). Instead re-arm the uplink IN PLACE by re-sending
-                        // START_AUDIO on the still-open channel, at most once every few
-                        // seconds. If it was just a silence (you not speaking), this is a
-                        // harmless no-op; if the stream really stopped, it nudges the 0x58
-                        // uplink back WITHOUT touching the L2CAP link.
+                                          // Connected, but the AAP channel may have stalled (not just idle).
+                                          // If the hi-res mic is engaged and the channel has been silent for
+                                          // a while, the mic uplink has died — rebuild the channel IN PLACE
+                                          // (drop + reopen, which re-arms START_AUDIO on the handshake) to
+                                          // recover it, WITHOUT toggling the OS audio, so the mic comes back
+                                          // and the call isn't kicked. connect_requested stays set → the
+                                          // outer loop reopens the L2CAP channel, no set_audio_connected.
+                                          // Mic engaged but the AAP channel has gone silent — the uplink
+                                          // may have stalled. NEVER drop the channel here: the user is on a
+                                          // call, so a reconnect kicks it, and repeated drop+reopen churn
+                                          // bricks the driver into Code 38 (a self-feeding "driver open
+                                          // FAILED" loop). Instead re-arm the uplink IN PLACE by re-sending
+                                          // START_AUDIO on the still-open channel, at most once every few
+                                          // seconds. If it was just a silence (you not speaking), this is a
+                                          // harmless no-op; if the stream really stopped, it nudges the 0x58
+                                          // uplink back WITHOUT touching the L2CAP link.
                         if ctx.mic_on.load(Ordering::Relaxed)
                             && last_data.elapsed() >= Duration::from_secs(8)
                             && last_mic_rearm.elapsed() >= Duration::from_secs(5)
@@ -2262,9 +2349,21 @@ mod tests {
 
     #[test]
     fn utc_timestamp_is_iso8601() {
-        assert_eq!(utc_timestamp(Duration::from_secs(0)), "1970-01-01T00:00:00.000Z");
-        assert_eq!(utc_timestamp(Duration::from_secs(951_782_400)), "2000-02-29T00:00:00.000Z");
-        assert_eq!(utc_timestamp(Duration::from_millis(1_790_705_162_071)), "2026-09-29T18:06:02.071Z");
-        assert_eq!(utc_timestamp(Duration::from_secs(1_798_761_599)), "2026-12-31T23:59:59.000Z");
+        assert_eq!(
+            utc_timestamp(Duration::from_secs(0)),
+            "1970-01-01T00:00:00.000Z"
+        );
+        assert_eq!(
+            utc_timestamp(Duration::from_secs(951_782_400)),
+            "2000-02-29T00:00:00.000Z"
+        );
+        assert_eq!(
+            utc_timestamp(Duration::from_millis(1_790_705_162_071)),
+            "2026-09-29T18:06:02.071Z"
+        );
+        assert_eq!(
+            utc_timestamp(Duration::from_secs(1_798_761_599)),
+            "2026-12-31T23:59:59.000Z"
+        );
     }
 }

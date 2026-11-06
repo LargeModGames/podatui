@@ -8,8 +8,7 @@ pub const HANDSHAKE: [u8; 16] = [
 pub const SET_FEATURES: [u8; 14] = [
     0x04, 0x00, 0x04, 0x00, 0x4D, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
-pub const REQUEST_NOTIFS: [u8; 10] =
-    [0x04, 0x00, 0x04, 0x00, 0x0F, 0x00, 0xFF, 0xFF, 0xFF, 0xFF];
+pub const REQUEST_NOTIFS: [u8; 10] = [0x04, 0x00, 0x04, 0x00, 0x0F, 0x00, 0xFF, 0xFF, 0xFF, 0xFF];
 
 /// Enable the hi-res (AAC-ELD) microphone stream — the AirPods start pushing
 /// 0x58 uplink audio packets. Taken from LibrePods PR #655.
@@ -58,7 +57,9 @@ pub const HR_CAPABILITIES_SERVICE_4: [u8; 7] = [0x04, 0x00, 0x04, 0x00, 0x01, 0x
 /// is the reproducible one. NOTE: sending this makes our enable byte-match Android, but
 /// on the A3063 test unit the AirPods still ACK service 19 and emit no data frames — so
 /// it is necessary but, standalone, not sufficient here (see hr_retry_campaign).
-pub const HR_ENABLE: [u8; 11] = [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x30, 0x01, 0x00, 0x00, 0x00];
+pub const HR_ENABLE: [u8; 11] = [
+    0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x30, 0x01, 0x00, 0x00, 0x00,
+];
 
 // ---- Sensor stream control ----
 //
@@ -159,17 +160,35 @@ pub fn sensor_stream(seq: u16, stream_id: u8, period_us: u32) -> [u8; 28] {
 pub fn hr_stream(seq: u8, service: u8, period_us: u32) -> [u8; 29] {
     let p = period_us.to_le_bytes();
     [
-        0x04, 0x00, 0x04, 0x00, // header
-        0x17, 0x00, 0x00, 0x00, // opcode (BuddyCommand)
-        0x10, 0x00, // descriptor (SensorDataWX)
-        0x11, 0x00, // payload length = 17
-        0x08, seq & 0x7F, // sequence, single-byte varint
-        0x10, 0x02, // top-level field 2 = 2
-        0x42, 0x0B, // field 8 (ServiceSettings), 11 bytes
-        0x08, service, //   service (84 = HEARTRATE_COMMAND / 19 = HEARTRATE)
-        0x10, 0x02, //   setting = 2
-        0x1A, 0x05, //   config, 5 bytes
-        0x01, p[0], p[1], p[2], p[3], // 0x01 + interval µs, little-endian
+        0x04,
+        0x00,
+        0x04,
+        0x00, // header
+        0x17,
+        0x00,
+        0x00,
+        0x00, // opcode (BuddyCommand)
+        0x10,
+        0x00, // descriptor (SensorDataWX)
+        0x11,
+        0x00, // payload length = 17
+        0x08,
+        seq & 0x7F, // sequence, single-byte varint
+        0x10,
+        0x02, // top-level field 2 = 2
+        0x42,
+        0x0B, // field 8 (ServiceSettings), 11 bytes
+        0x08,
+        service, //   service (84 = HEARTRATE_COMMAND / 19 = HEARTRATE)
+        0x10,
+        0x02, //   setting = 2
+        0x1A,
+        0x05, //   config, 5 bytes
+        0x01,
+        p[0],
+        p[1],
+        p[2],
+        p[3], // 0x01 + interval µs, little-endian
     ]
 }
 
@@ -335,7 +354,9 @@ pub fn anc_command(mode: u8) -> [u8; 11] {
 /// Generic AAP control command (opcode 0x09): `[HEADER, 0x09, 0x00, id, value, 0,0,0]`.
 /// ANC and the boolean feature toggles are all this shape.
 pub fn control_command(id: u8, value: u8) -> [u8; 11] {
-    [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, id, value, 0x00, 0x00, 0x00]
+    [
+        0x04, 0x00, 0x04, 0x00, 0x09, 0x00, id, value, 0x00, 0x00, 0x00,
+    ]
 }
 
 /// Boolean feature toggle: 0x01 = on, 0x02 = off (matches the AirPods encoding).
@@ -368,7 +389,17 @@ pub fn parse_rename(data: &[u8]) -> Option<String> {
 /// `[HEADER, 0x1A, 0x00, 0x01, size, 0x00, ...name]`.
 pub fn build_rename(name: &str) -> Vec<u8> {
     let bytes = name.as_bytes();
-    let mut f = vec![0x04, 0x00, 0x04, 0x00, 0x1A, 0x00, 0x01, bytes.len() as u8, 0x00];
+    let mut f = vec![
+        0x04,
+        0x00,
+        0x04,
+        0x00,
+        0x1A,
+        0x00,
+        0x01,
+        bytes.len() as u8,
+        0x00,
+    ];
     f.extend_from_slice(bytes);
     f
 }

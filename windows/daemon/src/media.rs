@@ -10,7 +10,7 @@ use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
 };
-use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
+use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 
 /// Initialize COM (MTA) for the calling thread — required before any SMTC call.
 /// Call once, from the thread that will drive the media calls.

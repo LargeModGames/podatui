@@ -35,7 +35,10 @@ impl Decoder {
         if h.is_null() {
             None
         } else {
-            Some(Decoder { h, out: vec![0i16; 8192] })
+            Some(Decoder {
+                h,
+                out: vec![0i16; 8192],
+            })
         }
     }
 
