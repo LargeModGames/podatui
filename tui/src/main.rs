@@ -68,7 +68,7 @@ async fn link(events: mpsc::Sender<LinkEvent>, mut commands: UnboundedReceiver<V
                 if events.send(connected).is_err() {
                     return;
                 }
-                let mut buf = [0u8; 1024];
+                let mut buf = [0u8; podatuid::RECV_MTU as usize];
                 loop {
                     tokio::select! {
                         r = airpods.link.recv(&mut buf) => match r {

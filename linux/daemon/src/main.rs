@@ -11,13 +11,14 @@ async fn main() -> Result<()> {
     };
     let airpods = podatuid::open(addr).await?;
     println!(
-        "connected to {} ({}) on PSM {:#06x}",
+        "connected to {} ({}) on PSM {:#06x}, receive MTU {}",
         airpods.name,
         airpods.addr,
-        aap::PSM_AACP
+        aap::PSM_AACP,
+        airpods.link.recv_mtu()?
     );
 
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; podatuid::RECV_MTU as usize];
     loop {
         let n = airpods.link.recv(&mut buf).await?;
         if n == 0 {

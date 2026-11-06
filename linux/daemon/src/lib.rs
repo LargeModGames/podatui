@@ -11,6 +11,11 @@ use tokio::time::{sleep, timeout};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+/// Incoming MTU to advertise. The AirPods only publish RTBuddy services whose descriptor
+/// fits it, and the heart-rate ones (~920 bytes) do not fit the 672-byte default.
+/// Android and the Windows driver use 1691 too (see windows/drivers/aap/L2cap.c).
+pub const RECV_MTU: u16 = 1691;
+
 const AAP_SERVICE: Uuid = Uuid::from_u128(0x74ec2172_0bad_4d01_8f77_997b2be0722a);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SETUP_GAP: Duration = Duration::from_millis(300);
@@ -63,5 +68,37 @@ async fn find_airpods(adapter: &Adapter) -> Result<Address> {
 async fn connect(addr: Address) -> Result<SeqPacket> {
     let target = SocketAddr::new(addr, AddressType::BrEdr, aap::PSM_AACP);
     let socket = Socket::new_seq_packet()?;
+    socket.bind(SocketAddr::any_br_edr())?;
+    socket.set_recv_mtu(RECV_MTU)?;
     Ok(timeout(CONNECT_TIMEOUT, socket.connect(target)).await??)
+}
+
+/// Start or stop the 1 Hz heart-rate stream (AirPods Pro 3). Start sends the AACP 1.3
+/// session init, switches the sensor on (control 0x30) and sets the interval on both
+/// heart-rate services, as the Windows daemon and LibrePods' Android client (PR #702) do.
+/// `seq` is a request counter; this uses `seq` and `seq + 1`.
+pub async fn heart_rate(link: &SeqPacket, seq: u8, on: bool) -> Result<()> {
+    if on {
+        for (packet, gap_ms) in [
+            (&aap::HR_CONNECT_SERVICE_0[..], 180),
+            (&aap::HR_CAPABILITIES_SERVICE_0[..], 220),
+            (&aap::HR_CONNECT_SERVICE_4[..], 180),
+            (&aap::HR_CAPABILITIES_SERVICE_4[..], 220),
+            (&aap::HR_ENABLE[..], 120),
+        ] {
+            link.send(packet).await?;
+            sleep(Duration::from_millis(gap_ms)).await;
+        }
+    }
+    let period = if on { aap::PERIOD_HEART_RATE_US } else { 0 };
+    link.send(&aap::hr_stream(seq, aap::STREAM_HEART_RATE, period))
+        .await?;
+    sleep(Duration::from_millis(120)).await;
+    link.send(&aap::hr_stream(
+        seq.wrapping_add(1),
+        aap::STREAM_HEART_RATE_LEGACY,
+        period,
+    ))
+    .await?;
+    Ok(())
 }
