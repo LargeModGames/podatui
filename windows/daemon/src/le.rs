@@ -41,11 +41,12 @@ pub struct Sighting {
 type OnSighting = Arc<dyn Fn(Sighting) + Send + Sync>;
 
 /// Pass every Apple advertisement record to `on_sighting`, scanning only while
-/// `should_scan()` is true. Blocks (keeps COM + the watcher alive), so run it on
-/// its own thread.
+/// `should_scan()` is true, and each watcher status change to `on_status`. Blocks
+/// (keeps COM + the watcher alive), so run it on its own thread.
 pub fn watch_nearby(
     on_sighting: impl Fn(Sighting) + Send + Sync + 'static,
     should_scan: impl Fn() -> bool + Send + 'static,
+    on_status: impl Fn(&'static str) + Send + 'static,
 ) {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -55,6 +56,7 @@ pub fn watch_nearby(
     let mut watcher: Option<BluetoothLEAdvertisementWatcher> = None;
     let mut scanning = false;
     let mut restarts = 0u32;
+    let mut last_status = None;
     loop {
         let w = match &watcher {
             Some(w) => w.clone(),
@@ -72,6 +74,10 @@ pub fn watch_nearby(
             },
         };
         let status = w.Status().unwrap_or(Status::Aborted);
+        if last_status != Some(status) {
+            last_status = Some(status);
+            on_status(status_name(status));
+        }
         if status == Status::Aborted || (scanning && status == Status::Stopped) {
             // One line per outage: with the radio off every retry aborts again.
             if restarts == 0 {
@@ -105,6 +111,17 @@ pub fn watch_nearby(
             scanning = false;
         }
         std::thread::sleep(POLL);
+    }
+}
+
+fn status_name(status: Status) -> &'static str {
+    match status {
+        Status::Created => "Created",
+        Status::Started => "Started",
+        Status::Stopping => "Stopping",
+        Status::Stopped => "Stopped",
+        Status::Aborted => "Aborted",
+        _ => "Unknown",
     }
 }
 

@@ -20,6 +20,7 @@ mod hrdb;
 mod le;
 mod media;
 mod micpipe;
+mod probe;
 mod rename;
 mod volume;
 
@@ -2138,6 +2139,9 @@ fn poll_mic(ctx: Ctx) {
 }
 
 fn main() {
+    if std::env::args().any(|a| a == "--probe") {
+        return probe::run();
+    }
     // Single instance: never run two daemons over the one exclusive driver.
     unsafe {
         let name = wide("Local\\PodatuiDaemonSingleton");
@@ -2262,6 +2266,7 @@ fn main() {
                 },
                 // Only scan while idle (disconnected) — no BLE radio during audio.
                 move || !c_scan.state.lock().unwrap().connected,
+                |_| {},
             );
         });
     }

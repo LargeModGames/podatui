@@ -275,7 +275,7 @@ const AAP_NAME_HINTS: &[&str] = &["airpod", "beats"];
 /// devices our AAP driver binds to, whatever the user has named them. The address
 /// is the 12 hex digits before `_C00000000` in the instance id, e.g.
 /// `7&3549f023&2&282D7FB83C8B_C00000000`. Readable without admin.
-fn aap_service_addresses() -> Vec<u64> {
+pub fn aap_service_addresses() -> Vec<u64> {
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
     };
