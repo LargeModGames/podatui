@@ -1,0 +1,14 @@
+podatui
+Copyright (C) 2026 LargeModGames
+
+podatui is a modified version of NTPods (https://github.com/arctumn/ntpods) by
+arctumn, continued from NTPods commit 188e45d on 2026-11-06. NTPods in turn is
+based on LibrePods (https://github.com/kavishdevar/librepods) by Kavish Devar and
+contributors. Changes made in podatui are recorded in this repository's git
+history, starting after commit 188e45d.
+
+podatui is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License version 3 (see LICENSE). The ACX virtual
+microphone driver in windows/drivers/mic is based on Microsoft's
+Windows-driver-samples and is licensed under the Microsoft Public License (see
+windows/drivers/mic/LICENSE).

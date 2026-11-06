@@ -63,7 +63,7 @@ You can choose:
   change this later in the app's settings).
 
 It installs to `C:\Program Files\podatui`, registers the driver-recovery and
-mic-rename tasks, and takes over an older LibrePods or zip install (your settings
+mic-rename tasks, and takes over an NTPods, older LibrePods or zip install (your settings
 and heart-rate history are kept). Restart when it asks. Uninstall from
 **Settings ▸ Apps**; that also removes the drivers, the tasks and the test
 certificate. If something fails, the log is in `%ProgramData%\podatui\setup.log`.
