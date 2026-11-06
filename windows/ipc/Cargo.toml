@@ -1,8 +1,8 @@
 [package]
-name = "ntpods-ipc"
+name = "podatui-ipc"
 version = "0.1.0"
 edition = "2021"
-description = "Shared IPC protocol (Command/Event types) between ntpodsd and the NTPods UIs."
+description = "Shared IPC protocol (Command/Event types) between podatuid and the podatui UIs."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

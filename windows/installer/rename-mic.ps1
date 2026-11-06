@@ -1,27 +1,27 @@
 <#
-    rename-mic.ps1 - show the NTPodsMic virtual microphone under the connected
-    device's name, e.g. "AirPods Pro de Pedro (NTPods)" in Sound settings and
+    rename-mic.ps1 - show the PodatuiMic virtual microphone under the connected
+    device's name, e.g. "AirPods Pro (podatui)" in Sound settings and
     Discord. NEEDS ADMIN (writes HKLM).
 
     Two ways in:
-      * The "NTPods Rename Mic" scheduled task (RunLevel Highest), which
+      * The "podatui Rename Mic" scheduled task (RunLevel Highest), which
         install.ps1 registers. The daemon writes the name to
-        %LOCALAPPDATA%\NTPods\micname.txt and fires the task with
+        %LOCALAPPDATA%\podatui\micname.txt and fires the task with
         `schtasks /run` (daemon/src/rename.rs). No -Name, runs hidden.
-      * By hand, elevated:   .\rename-mic.ps1 "AirPods Pro de Pedro"
+      * By hand, elevated:   .\rename-mic.ps1 "AirPods Pro"
 
     The endpoint is matched by the hardware id of the device behind it
-    (ROOT\NTPodsMicPC, or ROOT\AudioCodec for the old ACX mic), not by its
+    (ROOT\PodatuiMicPC, or ROOT\AudioCodec for the old ACX mic), not by its
     name, so it still matches after a rename. The
     name lives in PKEY_Device_DeviceDesc; Windows shows "<DeviceDesc> (<interface
     name>)". Idempotent: when the name is already right it changes nothing and
     does NOT restart the audio service, so the daemon can fire it on every connect.
-    Every run appends to %LOCALAPPDATA%\NTPods\rename.log.
+    Every run appends to %LOCALAPPDATA%\podatui\rename.log.
 #>
 param([string]$Name)
 $ErrorActionPreference = 'Stop'
 
-$dir = Join-Path $env:LOCALAPPDATA 'NTPods'
+$dir = Join-Path $env:LOCALAPPDATA 'podatui'
 $log = Join-Path $dir 'rename.log'
 function Log([string]$msg) {
     $line = '{0:yyyy-MM-ddTHH:mm:ss.fffZ} {1}' -f (Get-Date).ToUniversalTime(), $msg  # UTC, like daemon.log
@@ -72,7 +72,7 @@ try {
             $iface = Read-Str $props $ifKey
             $desc  = Read-Str $props $descKey
         } finally { $props.Close() }
-        if ($hw -notin 'ROOT\NTPodsMicPC', 'ROOT\AudioCodec' -and $iface -notlike '*NTPods*') { continue }
+        if ($hw -notin 'ROOT\PodatuiMicPC', 'ROOT\AudioCodec' -and $iface -notlike '*podatui*') { continue }
 
         $matched++
         if ($desc -ceq $Name) { Log "$id already '$Name'"; continue }
@@ -88,7 +88,7 @@ try {
     }
 } finally { $root.Close() }
 
-if (-not $matched) { Log 'no NTPods capture endpoint found - is the NTPodsMic driver installed?'; exit 1 }
+if (-not $matched) { Log 'no podatui capture endpoint found - is the PodatuiMic driver installed?'; exit 1 }
 if ($changed) {
     # Apps only pick up the new name after the endpoint service re-reads it.
     Log 'restarting AudioEndpointBuilder (brief audio drop)'

@@ -1,5 +1,5 @@
-//! Shared IPC protocol between `ntpodsd` (the driver-owning daemon) and the
-//! NTPods UIs (the tray + the full app). Newline-delimited JSON over a Windows
+//! Shared IPC protocol between `podatuid` (the driver-owning daemon) and the
+//! podatui UIs (the tray + the full app). Newline-delimited JSON over a Windows
 //! named pipe — see `../../../docs/windows/daemon-ipc/PLAN.md`.
 
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 /// stalls the WriteFile for events on the same handle). The daemon only WRITES
 /// events on `PIPE_EVENTS` and only READS commands on `PIPE_CMDS`, so no handle
 /// ever does both directions concurrently.
-pub const PIPE_EVENTS: &str = r"\\.\pipe\NTPods-events";
-pub const PIPE_CMDS: &str = r"\\.\pipe\NTPods-cmds";
+pub const PIPE_EVENTS: &str = r"\\.\pipe\podatui-events";
+pub const PIPE_CMDS: &str = r"\\.\pipe\podatui-cmds";
 
 /// Raw L2CAP proxy for the full app (Phase 3): the daemon owns the exclusive
 /// driver, so the app can't open it — it runs its AAP session over these instead.
@@ -18,8 +18,8 @@ pub const PIPE_CMDS: &str = r"\\.\pipe\NTPods-cmds";
 /// a u16 LE length, then the bytes) and reads the app's outgoing packets (same
 /// framing) from `PIPE_L2CAP_TX`, forwarding them to the driver. One pipe per
 /// direction (a sync duplex handle would deadlock).
-pub const PIPE_L2CAP_RX: &str = r"\\.\pipe\NTPods-l2cap-rx";
-pub const PIPE_L2CAP_TX: &str = r"\\.\pipe\NTPods-l2cap-tx";
+pub const PIPE_L2CAP_RX: &str = r"\\.\pipe\podatui-l2cap-rx";
+pub const PIPE_L2CAP_TX: &str = r"\\.\pipe\podatui-l2cap-tx";
 
 /// Battery levels (percent), each optional — a packet may carry only some.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ pub struct Snapshot {
     pub anc: u8,
     /// An app is currently recording from the virtual mic (hi-res stream on).
     pub mic_recording: bool,
-    /// The virtual mic driver is loaded (its NTPodsMic control device opens).
+    /// The virtual mic driver is loaded (its PodatuiMic control device opens).
     /// False on Windows before 10 2004, where the installer skips the mic driver,
     /// or when its install failed; the app then greys out the mic controls.
     /// (serde default: older snapshots.)

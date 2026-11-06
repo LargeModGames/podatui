@@ -1,13 +1,13 @@
 <#
-    NTPods for Windows — one-shot installer (the zip install; NTPods.msi does the
+    podatui for Windows — one-shot installer (the zip install; podatui.msi does the
     same thing with a normal setup wizard).
 
     Installs BOTH kernel drivers (test-signed on the fly):
-      • NTPodsAAP  — opens the AirPods AAP L2CAP channel (battery, ANC, mic, …).
-      • NTPodsMic  — a virtual microphone so any app can use the AirPods mic.
+      • PodatuiAAP  — opens the AirPods AAP L2CAP channel (battery, ANC, mic, …).
+      • PodatuiMic  — a virtual microphone so any app can use the AirPods mic.
                      Two drivers exist: ACX (default on Windows 11 22H2+) and
                      PortCls (Windows 10 2004+). -MicDriver acx|portcls overrides.
-    Then copies the daemon + WinUI app to %LOCALAPPDATA%\NTPods, registers the
+    Then copies the daemon + WinUI app to %LOCALAPPDATA%\podatui, registers the
     two elevated helper tasks (driver recovery, mic rename) and adds the apps to
     startup (the WinUI app launches minimised to the tray).
 
@@ -29,7 +29,7 @@ param([switch]$Yes, [ValidateSet('auto', 'acx', 'portcls')][string]$MicDriver = 
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'setup-common.ps1')
-$dest = Join-Path $env:LOCALAPPDATA 'NTPods'
+$dest = Join-Path $env:LOCALAPPDATA 'podatui'
 $sid = Get-CurrentUserSid
 
 # ---- 0. preflight: fail BEFORE touching certificates or drivers -------------
@@ -43,7 +43,7 @@ if (-not (Test-TestMode)) {
     }
     $bl = if ($bitlocker) { "BitLocker is ON for $env:SystemDrive. $script:BitLockerAdvice" } else { 'BitLocker is off for the system drive.' }
     throw @"
-Test Mode is not active, so Windows would refuse to load the NTPods drivers.
+Test Mode is not active, so Windows would refuse to load the podatui drivers.
   1. $bl
   2. Disable Secure Boot in your firmware/BIOS (while it is on, bcdedit refuses).
      $secureBoot
@@ -62,11 +62,11 @@ if ($bitlocker) {
 }
 
 $required = @(
-    'driver\NTPodsAAP.sys', 'driver\ntpodsaap.cat', 'driver\NTPodsAAP.inf',
-    'driver-mic\NTPodsMicPC.sys', 'driver-mic\ntpodsmicpc.cat', 'driver-mic\NTPodsMicPC.inf',
+    'driver\PodatuiAAP.sys', 'driver\podatuiaap.cat', 'driver\PodatuiAAP.inf',
+    'driver-mic\PodatuiMicPC.sys', 'driver-mic\podatuimicpc.cat', 'driver-mic\PodatuiMicPC.inf',
     'driver-mic-acx\AudioCodec.sys', 'driver-mic-acx\audiocodec.cat', 'driver-mic-acx\AudioCodec.inf',
-    'tools\devcon.exe', 'ntpodsd.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll',
-    'winui\ntpods-winui.exe', 'fix-driver.ps1', 'rename-mic.ps1'
+    'tools\devcon.exe', 'podatuid.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll',
+    'winui\podatui-winui.exe', 'fix-driver.ps1', 'rename-mic.ps1'
 ) | ForEach-Object { Join-Path $here $_ }
 $missing = @($required | Where-Object { -not (Test-Path $_) })
 if ($missing) {
@@ -74,20 +74,20 @@ if ($missing) {
 }
 
 # ---- 1. take over an older LibrePods install ---------------------------------
-Stop-NTPods
+Stop-Podatui
 Remove-LegacyLibrePods $sid $env:LOCALAPPDATA $env:APPDATA
 Remove-SetupLeftovers $env:LOCALAPPDATA
 
 # ---- 2. both drivers (test-signed here, then pnputil / devcon) ---------------
-$work = Join-Path $env:TEMP "NTPods-drivers-$(Get-Random)"
-try { Install-NTPodsDrivers $here $work $MicDriver }
+$work = Join-Path $env:TEMP "podatui-drivers-$(Get-Random)"
+try { Install-PodatuiDrivers $here $work $MicDriver }
 finally { Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ---- 3. copy the apps -------------------------------------------------------
 # The daemon owns the driver + AAP session + mic; the WinUI app is its IPC client.
 Write-Host "==> Copying the apps to $dest"
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-foreach ($f in 'ntpodsd.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'fix-driver.ps1', 'rename-mic.ps1') {
+foreach ($f in 'podatuid.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'fix-driver.ps1', 'rename-mic.ps1') {
     Copy-Item (Join-Path $here $f) $dest -Force
 }
 # The WinUI app ships as a self-contained folder.
@@ -97,7 +97,7 @@ Copy-Item (Join-Path $here 'winui') $dest -Recurse -Force
 Get-ChildItem $dest -Recurse -File | Unblock-File
 
 # ---- 4. elevated on-demand helper tasks -------------------------------------
-Register-NTPodsTasks $dest $sid
+Register-PodatuiTasks $dest $sid
 
 # ---- 5. auto-start at login -------------------------------------------------
 # The daemon is the always-on background process (per-user, in the session — NOT a
@@ -106,13 +106,13 @@ Register-NTPodsTasks $dest $sid
 # Same Run values the app's own "Start with Windows" setting uses.
 Write-Host '==> Adding the daemon + WinUI app to startup...'
 $startup = Get-StartupDir $env:APPDATA
-foreach ($l in 'NTPods Daemon.lnk', 'NTPods.lnk') {   # older installs used shortcuts
+foreach ($l in 'podatui Daemon.lnk', 'podatui.lnk') {   # older installs used shortcuts
     Remove-Item (Join-Path $startup $l) -Force -ErrorAction SilentlyContinue
 }
-Set-RunValues $sid (Join-Path $dest 'ntpodsd.exe') (Join-Path $dest 'winui\ntpods-winui.exe')
+Set-RunValues $sid (Join-Path $dest 'podatuid.exe') (Join-Path $dest 'winui\podatui-winui.exe')
 
 Write-Host ''
 Write-Host '==> Done. A reboot is needed to finish the driver install.' -ForegroundColor Green
 Write-Host '    After reboot, connect your AirPods — the WinUI app (tray) shows battery'
-Write-Host '    + Noise Control, and the NTPods microphone appears in Sound > Input'
+Write-Host '    + Noise Control, and the podatui microphone appears in Sound > Input'
 Write-Host '    (and in Discord etc.), renamed to your AirPods once they connect.'

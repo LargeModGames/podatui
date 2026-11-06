@@ -369,7 +369,7 @@ STDMETHODIMP_(NTSTATUS) CWaveMiniport::NewStream(_Out_ PMINIPORTWAVERTSTREAM* St
     if (Pin != WAVE_PIN_CAPTURE || !Capture || !IsOurFormat(DataFormat)) {
         return STATUS_INVALID_PARAMETER;
     }
-    CCaptureStream* stream = new (POOL_FLAG_NON_PAGED, NTPODS_POOLTAG) CCaptureStream(NULL);
+    CCaptureStream* stream = new (POOL_FLAG_NON_PAGED, PODATUI_POOLTAG) CCaptureStream(NULL);
     if (!stream) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -396,7 +396,7 @@ STDMETHODIMP_(NTSTATUS) CWaveMiniport::GetDeviceDescription(_Out_ PDEVICE_DESCRI
 
 NTSTATUS CreateWaveMiniport(_Out_ PUNKNOWN* Unknown)
 {
-    CWaveMiniport* m = new (POOL_FLAG_NON_PAGED, NTPODS_POOLTAG) CWaveMiniport(NULL);
+    CWaveMiniport* m = new (POOL_FLAG_NON_PAGED, PODATUI_POOLTAG) CWaveMiniport(NULL);
     if (!m) {
         *Unknown = NULL;
         return STATUS_INSUFFICIENT_RESOURCES;

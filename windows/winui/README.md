@@ -1,8 +1,8 @@
-# NTPods — WinUI 3 client (`ntpods-winui.exe`)
+# podatui — WinUI 3 client (`podatui-winui.exe`)
 
 ![The WinUI 3 client](docs/screenshot-device.png)
 
-A native **C# / WinUI 3 (Windows App SDK)** front-end for NTPods.
+A native **C# / WinUI 3 (Windows App SDK)** front-end for podatui.
 
 ## Screenshots
 
@@ -15,7 +15,7 @@ A native **C# / WinUI 3 (Windows App SDK)** front-end for NTPods.
 | ![Hearing aid](docs/screenshot-hearing.png) | ![Connection island](docs/screenshot-island.png) |
 | Hearing aid controls | iOS-style connection island |
  It is the Windows client — a thin IPC client of the Rust daemon,
-**`ntpodsd.exe`**, which owns the drivers, the AAP session and the hi-res mic.
+**`podatuid.exe`**, which owns the drivers, the AAP session and the hi-res mic.
 (An earlier lightweight Rust tray was retired; this app carries its own tray.)
 
 This app is **primarily a tray app**:
@@ -31,12 +31,12 @@ Two one-directional Windows named pipes (see `../ipc/src/lib.rs`):
 
 | Pipe | Direction | Purpose |
 |------|-----------|---------|
-| `NTPods-events` | daemon → app (read) | newline-delimited JSON events (`state` / `overlay` / `connect_prompt`) |
-| `NTPods-cmds`   | app → daemon (write) | newline-delimited JSON commands (`hello`, `set_anc`, …) |
+| `podatui-events` | daemon → app (read) | newline-delimited JSON events (`state` / `overlay` / `connect_prompt`) |
+| `podatui-cmds`   | app → daemon (write) | newline-delimited JSON commands (`hello`, `set_anc`, …) |
 
 If the daemon isn't running when the app starts, it launches the sibling
-`ntpodsd.exe` (from `AppContext.BaseDirectory`) and retries every 500 ms. Put
-`ntpods-winui.exe` next to the other NTPods exes (the `dist/` layout).
+`podatuid.exe` (from `AppContext.BaseDirectory`) and retries every 500 ms. Put
+`podatui-winui.exe` next to the other podatui exes (the `dist/` layout).
 
 All pipe I/O is fully asynchronous (`ConnectAsync` / `ReadLineAsync` /
 `WriteAsync`) on background loops; snapshots are marshalled to the UI thread via
@@ -80,44 +80,44 @@ From this `winui/` directory (the folder with the `.sln`):
 
 ```powershell
 # Restore + build (Release, x64)
-dotnet build NTPods.WinUI.sln -c Release -p:Platform=x64
+dotnet build Podatui.WinUI.sln -c Release -p:Platform=x64
 ```
 
 or, to produce the self-contained unpackaged output explicitly:
 
 ```powershell
-dotnet publish NTPods.WinUI\NTPods.WinUI.csproj -c Release -r win-x64 --self-contained true
+dotnet publish Podatui.WinUI\Podatui.WinUI.csproj -c Release -r win-x64 --self-contained true
 ```
 
 With MSBuild directly:
 
 ```powershell
-msbuild NTPods.WinUI.sln /t:Restore,Build /p:Configuration=Release /p:Platform=x64
+msbuild Podatui.WinUI.sln /t:Restore,Build /p:Configuration=Release /p:Platform=x64
 ```
 
-The executable is emitted as **`ntpods-winui.exe`** under
-`NTPods.WinUI\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\`
+The executable is emitted as **`podatui-winui.exe`** under
+`Podatui.WinUI\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\`
 (`publish\` for the `dotnet publish` command). Copy it — plus its runtime files —
-next to `ntpodsd.exe`.
+next to `podatuid.exe`.
 
 ## Run
 
 ```powershell
-.\ntpods-winui.exe
+.\podatui-winui.exe
 ```
 
-It appears in the tray, connects to (or launches) `ntpodsd.exe`, and renders
+It appears in the tray, connects to (or launches) `podatuid.exe`, and renders
 the state. The **Switch default UI to iced** button writes
-`%LOCALAPPDATA%\NTPods\ui.pref` = `iced`, so the tray's "Open App" launches
+`%LOCALAPPDATA%\podatui\ui.pref` = `iced`, so the tray's "Open App" launches
 the iced front-end by default next time.
 
 ## Project layout
 
 ```
 winui/
-  NTPods.WinUI.sln
-  NTPods.WinUI/
-    NTPods.WinUI.csproj
+  Podatui.WinUI.sln
+  Podatui.WinUI/
+    Podatui.WinUI.csproj
     app.manifest
     App.xaml / App.xaml.cs          bootstrap; wires tray + DaemonClient
     MainWindow.xaml / .xaml.cs      Fluent UI (Mica, light/dark aware)
@@ -127,9 +127,9 @@ winui/
     Tray/
       TrayIcon.cs                   H.NotifyIcon.WinUI tray icon + Open/Quit menu
     Services/
-      UiPreference.cs               read/write %LOCALAPPDATA%\NTPods\ui.pref
+      UiPreference.cs               read/write %LOCALAPPDATA%\podatui\ui.pref
     Assets/
-      app.ico  tray.ico  icon.png   NTPods icon (window / tray / app)
+      app.ico  tray.ico  icon.png   podatui icon (window / tray / app)
       airpods.png                    AirPods product image for the device card
 ```
 
@@ -153,6 +153,6 @@ OS display language selects the match at runtime. `en-US` stays the fallback
 
 The UI look comes from LibrePods (Android app + iced app), adapted to native
 Fluent: a **Mica** backdrop, rounded cards for the device/battery/sections, the
-AirPods product image in the device header, and the NTPods brand accent
+AirPods product image in the device header, and the podatui brand accent
 (`#039BE5`, the Android app's `light_blue_600`) applied to the progress bars and
 Fluent accent controls. It is light/dark-theme aware via system theme resources.

@@ -1,6 +1,6 @@
-# NTPods Windows daemon + IPC — plan
+# podatui Windows daemon + IPC — plan
 
-> **Status: done and shipped.** `ntpodsd` owns the drivers, the AAP session and
+> **Status: done and shipped.** `podatuid` owns the drivers, the AAP session and
 > the mic pipeline; the WinUI app is a thin IPC client. The two Rust front-ends this
 > plan was written against (the old Rust tray and the iced app) no
 > longer exist on Windows — read their names below as history. See the Status
@@ -18,18 +18,18 @@ battery/mic keep working even with no UI open.
 
 ```
                  ┌─ old tray           (UI client, light)
-ntpodsd.exe ──┤       IPC: \\.\pipe\NTPods  (NDJSON)
+podatuid.exe ──┤       IPC: \\.\pipe\podatui  (NDJSON)
 (owns the driver)└─ iced app           (UI client, iced GUI)
 ```
 
 ## Components
 
-- **`ntpodsd`** (new, `windows/daemon/`) — headless. Owns the driver
+- **`podatuid`** (new, `windows/daemon/`) — headless. Owns the driver
   handle + AAP session (today's tray `run_receiver`), the mic pipeline (decode
-  AAC-ELD → feed `\\.\NTPodsMic`), the auto-activate poll + A2DP reset, and
+  AAC-ELD → feed `\\.\PodatuiMic`), the auto-activate poll + A2DP reset, and
   the dynamic-rename trigger. Holds the **authoritative state**. Runs an IPC
   server. Single-instance (named mutex).
-- **`ntpods-ipc`** (new lib crate) — the shared `Command` / `Event` serde
+- **`podatui-ipc`** (new lib crate) — the shared `Command` / `Event` serde
   types + a tiny NDJSON framing helper, so daemon and clients agree on the wire.
 - **the old tray** (refactored) — pure UI client: connects to the pipe
   (spawns the daemon if absent), renders the icon/menu/overlay from daemon
@@ -41,7 +41,7 @@ ntpodsd.exe ──┤       IPC: \\.\pipe\NTPods  (NDJSON)
 
 ## IPC protocol
 
-- **Transport:** Windows **named pipe** `\\.\pipe\NTPods`, duplex, message
+- **Transport:** Windows **named pipe** `\\.\pipe\podatui`, duplex, message
   mode, **multi-instance** (one pipe instance per connected client). Access
   restricted to the current user.
 - **Framing:** newline-delimited JSON (NDJSON) — one `serde_json` value per line.
@@ -62,17 +62,17 @@ ntpodsd.exe ──┤       IPC: \\.\pipe\NTPods  (NDJSON)
 ## Lifecycle
 
 - **Start:** the tray autostarts at login (as now) and **ensures the daemon is
-  running** — if the pipe isn't there, it spawns `ntpodsd.exe`, then connects.
+  running** — if the pipe isn't there, it spawns `podatuid.exe`, then connects.
   Client-spawns-daemon = no separate autostart entry, robust.
 - **Single-instance:** the daemon holds a named mutex; a second spawn exits.
 - **Death/restart:** a client that sees the pipe drop retries/reconnects (and
   re-spawns the daemon if needed). The daemon keeps running when UIs close.
 - **Shutdown:** closing a UI just disconnects its pipe; the daemon lives on.
-  (A tray "Quit NTPods" can send a `Shutdown` that stops the daemon too.)
+  (A tray "Quit podatui" can send a `Shutdown` that stops the daemon too.)
 
 ## Migration — incremental, nothing breaks between phases
 
-1. **Daemon core.** New `ntpodsd` + `ntpods-ipc`. Move `run_receiver` +
+1. **Daemon core.** New `podatuid` + `podatui-ipc`. Move `run_receiver` +
    the auto-activate poll + the mic pipeline + `State` out of the tray into the
    daemon. Add the NDJSON named-pipe server; broadcast `State`/`Overlay`. Test
    the daemon standalone (it logs; the mic + battery work with no UI).
@@ -84,11 +84,11 @@ ntpodsd.exe ──┤       IPC: \\.\pipe\NTPods  (NDJSON)
    backend through the daemon IPC. Now tray + full app coexist. (Heaviest phase —
    touches the shared cross-platform code; Linux path untouched.)
 4. **Polish.** Daemon single-instance + autostart-on-demand + reconnect; installer
-   ships `ntpodsd.exe` and drops the exclusive-handoff shortcut logic.
+   ships `podatuid.exe` and drops the exclusive-handoff shortcut logic.
 
 ## Status — DONE ✅ (validated on hardware)
 
-- **`ntpodsd`** owns both drivers, the AAP session and the hi-res mic; the UI is
+- **`podatuid`** owns both drivers, the AAP session and the hi-res mic; the UI is
   a thin IPC client. Confirmed on hardware: battery / ANC / volume / mic / ear
   detection / hearing aid all shown and controlled over IPC, auto-reconnect,
   overlay cards.
@@ -146,7 +146,7 @@ into a shared crate is still open.
 - **Multi-client pipe:** the daemon serves several pipe instances at once and
   broadcasts to all — one reader thread per client + a shared broadcast channel.
 - **Mic ownership:** the daemon is the single owner of both the AAP driver and
-  `\\.\NTPodsMic`, so no UI can take the handles from under it.
+  `\\.\PodatuiMic`, so no UI can take the handles from under it.
 - **Shared modules:** `aap` / `driver` / `eld` / `micpipe` / `a2dp` / `volume` all
   live in the daemon. If in-proc access is ever needed elsewhere, split them into a
-  small `ntpods-win-core` lib.
+  small `podatui-win-core` lib.

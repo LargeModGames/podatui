@@ -59,7 +59,7 @@ function Test-MicSupported {
     [Environment]::OSVersion.Version.Build -ge 19041
 }
 
-# There are two mic drivers with the same \\.\NTPodsMic control device, so the
+# There are two mic drivers with the same \\.\PodatuiMic control device, so the
 # daemon works with either:
 #   acx      ACX (drivers/mic), the default on Windows 11 22H2 (build 22621)+;
 #            it needs ACX 1.1 / KMDF 1.31, which older Windows doesn't have.
@@ -90,8 +90,8 @@ function Invoke-Tool([string]$what, [int[]]$ok, [scriptblock]$cmd) {
     if ($ok -notcontains $code) { throw "$what failed (exit code $code)." }
 }
 
-function Stop-NTPods {
-    Get-Process -Name 'ntpods-winui', 'ntpodsd', 'librepods-winui', 'librepodsd', 'librepods-tray', 'librepods' -ErrorAction SilentlyContinue |
+function Stop-Podatui {
+    Get-Process -Name 'podatui-winui', 'podatuid', 'librepods-winui', 'librepodsd', 'librepods-tray', 'librepods' -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }
@@ -118,8 +118,8 @@ function Remove-RunValues([string]$userSid, [string[]]$names) {
 function Set-RunValues([string]$userSid, [string]$daemonExe, [string]$winuiExe) {
     $key = "Registry::HKEY_USERS\$userSid\$script:RunKeyPath"
     if (-not (Test-Path $key)) { New-Item $key -Force | Out-Null }
-    Set-ItemProperty $key -Name 'NTPods Daemon' -Value "`"$daemonExe`""
-    Set-ItemProperty $key -Name 'NTPods' -Value "`"$winuiExe`" --tray"
+    Set-ItemProperty $key -Name 'podatui Daemon' -Value "`"$daemonExe`""
+    Set-ItemProperty $key -Name 'podatui' -Value "`"$winuiExe`" --tray"
 }
 
 # Remove every copy of a test certificate from the machine stores. Uses the
@@ -140,12 +140,13 @@ function Remove-TestCert([string]$subject) {
 }
 
 # ---- older installs -----------------------------------------------------------
-# NTPods used to be called LibrePods (for Windows). Keep the user's settings and
-# heart-rate history, and remove the old driver, tasks, startup entries and test
-# certificate so the two never fight over the AirPods.
+# NTPods, which podatui is based on, used to be called LibrePods (for Windows).
+# Keep the user's settings and heart-rate history, and remove the old driver,
+# tasks, startup entries and test certificate so the two never fight over the
+# AirPods.
 function Remove-LegacyLibrePods([string]$userSid, [string]$localAppData, [string]$appData) {
     $legacy = Join-Path $localAppData 'LibrePods'
-    $data = Join-Path $localAppData 'NTPods'
+    $data = Join-Path $localAppData 'podatui'
     if (Test-Path $legacy) {
         Write-Host "==> Moving your settings and heart-rate history from $legacy"
         New-Item -ItemType Directory -Force -Path $data | Out-Null
@@ -180,28 +181,28 @@ function Remove-SetupLeftovers([string]$localAppData) {
     $temps = @((Join-Path $localAppData 'Temp'), $env:TEMP) | Select-Object -Unique
     foreach ($t in $temps) {
         Get-ChildItem $t -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like 'NTPods-drivers-*' -or $_.Name -like 'LibrePods-drivers-*' -or
-                           $_.Name -in 'NTPodsMicPkg', 'LibrePodsMicPkg' } |
+            Where-Object { $_.Name -like 'podatui-drivers-*' -or $_.Name -like 'LibrePods-drivers-*' -or
+                           $_.Name -in 'PodatuiMicPkg', 'LibrePodsMicPkg' } |
             ForEach-Object {
                 Write-Host "==> Removing leftover $($_.FullName)"
                 Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
             }
     }
-    Get-ChildItem (Join-Path $env:ProgramData 'NTPods') -Directory -Filter 'drivers-*' -ErrorAction SilentlyContinue |
+    Get-ChildItem (Join-Path $env:ProgramData 'podatui') -Directory -Filter 'drivers-*' -ErrorAction SilentlyContinue |
         ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# A zip install (install.ps1) keeps the programs in %LOCALAPPDATA%\NTPods and
+# A zip install (install.ps1) keeps the programs in %LOCALAPPDATA%\podatui and
 # starts them from the Startup folder. The MSI calls this so only one copy is left.
 # Settings, logs and heart-rate history in that folder stay.
 function Remove-ZipInstall([string]$localAppData, [string]$appData) {
-    $dir = Join-Path $localAppData 'NTPods'
-    foreach ($f in 'ntpodsd.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'fix-driver.ps1', 'rename-mic.ps1') {
+    $dir = Join-Path $localAppData 'podatui'
+    foreach ($f in 'podatuid.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'fix-driver.ps1', 'rename-mic.ps1') {
         Remove-Item (Join-Path $dir $f) -Force -ErrorAction SilentlyContinue
     }
     Remove-Item (Join-Path $dir 'winui') -Recurse -Force -ErrorAction SilentlyContinue
     $startup = Get-StartupDir $appData
-    foreach ($l in 'NTPods Daemon.lnk', 'NTPods.lnk') {
+    foreach ($l in 'podatui Daemon.lnk', 'podatui.lnk') {
         Remove-Item (Join-Path $startup $l) -Force -ErrorAction SilentlyContinue
     }
 }
@@ -211,33 +212,33 @@ function Remove-ZipInstall([string]$localAppData, [string]$appData) {
 # (the dist / install dir). The packages are copied to $work and signed there, so
 # the files the MSI installed stay byte-identical (a repair would otherwise see
 # them as changed). $micDriver: auto | acx | portcls, see Resolve-MicDriver.
-function Install-NTPodsDrivers([string]$root, [string]$work, [string]$micDriver = 'auto') {
+function Install-PodatuiDrivers([string]$root, [string]$work, [string]$micDriver = 'auto') {
     $devcon = Join-Path $root 'tools\devcon.exe'
     $micKind = Resolve-MicDriver $micDriver
     New-Item -ItemType Directory -Force -Path $work | Out-Null
     foreach ($d in 'driver', 'driver-mic', 'driver-mic-acx') {
         Copy-Item (Join-Path $root $d) $work -Recurse -Force
     }
-    $aap = @{ sys = Join-Path $work 'driver\NTPodsAAP.sys'; cat = Join-Path $work 'driver\ntpodsaap.cat'; inf = Join-Path $work 'driver\NTPodsAAP.inf' }
+    $aap = @{ sys = Join-Path $work 'driver\PodatuiAAP.sys'; cat = Join-Path $work 'driver\podatuiaap.cat'; inf = Join-Path $work 'driver\PodatuiAAP.inf' }
     $mic = if ($micKind -eq 'acx') {
         @{ name = 'ACX'; hwid = 'ROOT\AudioCodec'
            sys = Join-Path $work 'driver-mic-acx\AudioCodec.sys'; cat = Join-Path $work 'driver-mic-acx\audiocodec.cat'; inf = Join-Path $work 'driver-mic-acx\AudioCodec.inf' }
     } else {
-        @{ name = 'PortCls'; hwid = 'ROOT\NTPodsMicPC'
-           sys = Join-Path $work 'driver-mic\NTPodsMicPC.sys'; cat = Join-Path $work 'driver-mic\ntpodsmicpc.cat'; inf = Join-Path $work 'driver-mic\NTPodsMicPC.inf' }
+        @{ name = 'PortCls'; hwid = 'ROOT\PodatuiMicPC'
+           sys = Join-Path $work 'driver-mic\PodatuiMicPC.sys'; cat = Join-Path $work 'driver-mic\podatuimicpc.cat'; inf = Join-Path $work 'driver-mic\PodatuiMicPC.inf' }
     }
 
     # Test code-signing cert, trusted for driver loading. Reuse the one from an
     # earlier run instead of piling up a new one every time.
     $cert = Get-ChildItem Cert:\LocalMachine\My |
-        Where-Object { $_.Subject -eq 'CN=NTPods Test Cert' -and $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
+        Where-Object { $_.Subject -eq 'CN=podatui Test Cert' -and $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
         Sort-Object NotAfter -Descending | Select-Object -First 1
     if ($cert) {
-        Write-Host '==> Reusing the NTPods test code-signing certificate...'
+        Write-Host '==> Reusing the podatui test code-signing certificate...'
     } else {
         Write-Host '==> Creating a test code-signing certificate...'
         $cert = New-SelfSignedCertificate -Type CodeSigningCert `
-            -Subject 'CN=NTPods Test Cert' `
+            -Subject 'CN=podatui Test Cert' `
             -CertStoreLocation Cert:\LocalMachine\My `
             -KeyUsage DigitalSignature -KeyExportPolicy Exportable
     }
@@ -255,22 +256,22 @@ function Install-NTPodsDrivers([string]$root, [string]$work, [string]$micDriver 
         if (-not $r.SignerCertificate) { throw "Could not sign ${path}: $($r.StatusMessage)" }
         if ($r.Status -ne 'Valid') { Write-Warning "$(Split-Path -Leaf $path): signed, but reported $($r.Status): $($r.StatusMessage)" }
     }
-    Write-Host '==> Signing NTPodsAAP...'
+    Write-Host '==> Signing PodatuiAAP...'
     & $sign $aap.sys; & $sign $aap.cat
-    Write-Host "==> Signing NTPodsMic ($($mic.name))..."
+    Write-Host "==> Signing PodatuiMic ($($mic.name))..."
     & $sign $mic.sys; & $sign $mic.cat
 
-    # NTPodsAAP: PnP profile driver, via pnputil.
-    Write-Host '==> Removing any previously installed NTPodsAAP package...'
-    foreach ($oem in (Get-DriverPackages 'NTPodsAAP.inf')) { pnputil /delete-driver $oem /uninstall /force | Out-Null }
-    Write-Host '==> Installing NTPodsAAP...'
+    # PodatuiAAP: PnP profile driver, via pnputil.
+    Write-Host '==> Removing any previously installed PodatuiAAP package...'
+    foreach ($oem in (Get-DriverPackages 'PodatuiAAP.inf')) { pnputil /delete-driver $oem /uninstall /force | Out-Null }
+    Write-Host '==> Installing PodatuiAAP...'
     # 259 = added, but no matching device yet (AirPods not paired); 3010 = reboot needed.
-    Invoke-Tool 'Installing NTPodsAAP (pnputil)' @(0, 259, 3010) { pnputil /add-driver $aap.inf /install }
+    Invoke-Tool 'Installing PodatuiAAP (pnputil)' @(0, 259, 3010) { pnputil /add-driver $aap.inf /install }
 
-    # NTPodsMic: ROOT-enumerated device, via devcon. Remove both kinds first, so
+    # PodatuiMic: ROOT-enumerated device, via devcon. Remove both kinds first, so
     # switching between ACX and PortCls never leaves two mics side by side.
     Write-Host '==> Removing any existing mic device...'
-    Invoke-Tool 'Removing the old mic device (devcon)' @(0, 1, 2) { & $devcon remove 'ROOT\NTPodsMicPC' }
+    Invoke-Tool 'Removing the old mic device (devcon)' @(0, 1, 2) { & $devcon remove 'ROOT\PodatuiMicPC' }
     Invoke-Tool 'Removing the old ACX mic device (devcon)' @(0, 1, 2) { & $devcon remove 'ROOT\AudioCodec' }
     # Old mic packages pile up in the driver store otherwise (one per install).
     Remove-MicDriverPackages
@@ -278,29 +279,29 @@ function Install-NTPodsDrivers([string]$root, [string]$work, [string]$micDriver 
     # On older Windows the INF has no matching section and the device would never
     # start, so skip it and say why. Everything else works without it.
     if (-not (Test-MicSupported)) {
-        Write-Host "==> Skipping NTPodsMic: it needs Windows 10 2004 or newer (this is build $([Environment]::OSVersion.Version.Build)). Battery, noise control and the rest still work." -ForegroundColor Yellow
+        Write-Host "==> Skipping PodatuiMic: it needs Windows 10 2004 or newer (this is build $([Environment]::OSVersion.Version.Build)). Battery, noise control and the rest still work." -ForegroundColor Yellow
         return
     }
-    Write-Host "==> Installing NTPodsMic, $($mic.name) driver (virtual microphone)..."
+    Write-Host "==> Installing PodatuiMic, $($mic.name) driver (virtual microphone)..."
     # devcon: 0 = done, 1 = done but a reboot is needed.
-    Invoke-Tool 'Installing NTPodsMic (devcon)' @(0, 1) { & $devcon install $mic.inf $mic.hwid }
+    Invoke-Tool 'Installing PodatuiMic (devcon)' @(0, 1) { & $devcon install $mic.inf $mic.hwid }
     $micDev = Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.HardwareID -contains $mic.hwid }
     if (-not $micDev) { throw "devcon reported success, but no $($mic.hwid) device exists." }
 }
 
-function Uninstall-NTPodsDrivers([string]$root) {
+function Uninstall-PodatuiDrivers([string]$root) {
     $devcon = Join-Path $root 'tools\devcon.exe'
     if (Test-Path $devcon) {
-        Write-Host '==> Removing the NTPods microphone device...'
-        Invoke-Tool 'Removing the mic device (devcon)' @(0, 1, 2) { & $devcon remove 'ROOT\NTPodsMicPC' }
+        Write-Host '==> Removing the podatui microphone device...'
+        Invoke-Tool 'Removing the mic device (devcon)' @(0, 1, 2) { & $devcon remove 'ROOT\PodatuiMicPC' }
         Invoke-Tool 'Removing the old ACX mic device (devcon)' @(0, 1, 2) { & $devcon remove 'ROOT\AudioCodec' }
     }
-    foreach ($oem in (Get-DriverPackages 'NTPodsAAP.inf')) {
-        Write-Host "==> Removing driver package $oem (NTPodsAAP.inf)"
+    foreach ($oem in (Get-DriverPackages 'PodatuiAAP.inf')) {
+        Write-Host "==> Removing driver package $oem (PodatuiAAP.inf)"
         pnputil /delete-driver $oem /uninstall /force | Out-Null
     }
     Remove-MicDriverPackages
-    Remove-TestCert 'CN=NTPods Test Cert'
+    Remove-TestCert 'CN=podatui Test Cert'
 }
 
 # Remove every mic driver package from the driver store, PortCls and ACX alike.
@@ -308,7 +309,7 @@ function Uninstall-NTPodsDrivers([string]$root) {
 # match the provider too; older builds still carried the sample's VS_Microsoft /
 # LibrePods.
 function Remove-MicDriverPackages {
-    foreach ($p in @(@('NTPodsMicPC.inf', $null), @('audiocodec.inf', @('NTPods', 'LibrePods', 'VS_Microsoft')))) {
+    foreach ($p in @(@('PodatuiMicPC.inf', $null), @('audiocodec.inf', @('podatui', 'LibrePods', 'VS_Microsoft')))) {
         foreach ($oem in (Get-DriverPackages $p[0] $p[1])) {
             Write-Host "==> Removing driver package $oem ($($p[0]))"
             pnputil /delete-driver $oem /uninstall /force | Out-Null
@@ -319,19 +320,19 @@ function Remove-MicDriverPackages {
 # ---- elevated on-demand helper tasks -----------------------------------------
 # The daemon runs unelevated and fires these with `schtasks /run`, which runs them
 # elevated WITHOUT a UAC prompt:
-#   • NTPods Fix Driver — recover the AAP devnode from Code 38 without a reboot,
+#   • podatui Fix Driver — recover the AAP devnode from Code 38 without a reboot,
 #     after repeated driver-open failures (daemon/src/devnode.rs). It re-checks
 #     the devnode and no-ops when healthy.
-#   • NTPods Rename Mic — show the mic under the connected device's name; the
+#   • podatui Rename Mic — show the mic under the connected device's name; the
 #     daemon writes it to micname.txt first (daemon/src/rename.rs). Idempotent.
 # They run as the user (not SYSTEM) so that user can start them and they see the
 # user's %LOCALAPPDATA%.
-function Register-NTPodsTasks([string]$scriptDir, [string]$userSid) {
+function Register-PodatuiTasks([string]$scriptDir, [string]$userSid) {
     $user = (New-Object Security.Principal.SecurityIdentifier($userSid)).Translate([Security.Principal.NTAccount]).Value
     Write-Host "==> Registering the elevated helper tasks for $user..."
     foreach ($t in @(
-            @('NTPods Fix Driver', 'fix-driver.ps1', 'Recover the NTPods AAP devnode from Code 38 (no reboot).'),
-            @('NTPods Rename Mic', 'rename-mic.ps1', 'Rename the NTPods virtual mic to the connected device name.'))) {
+            @('podatui Fix Driver', 'fix-driver.ps1', 'Recover the podatui AAP devnode from Code 38 (no reboot).'),
+            @('podatui Rename Mic', 'rename-mic.ps1', 'Rename the podatui virtual mic to the connected device name.'))) {
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
             -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $scriptDir $t[1])`""
         $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
@@ -342,8 +343,8 @@ function Register-NTPodsTasks([string]$scriptDir, [string]$userSid) {
     }
 }
 
-function Unregister-NTPodsTasks {
-    foreach ($t in 'NTPods Fix Driver', 'NTPods Rename Mic') {
+function Unregister-PodatuiTasks {
+    foreach ($t in 'podatui Fix Driver', 'podatui Rename Mic') {
         Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
     }
 }

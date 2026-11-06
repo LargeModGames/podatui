@@ -1,7 +1,7 @@
 name: Windows CI (frontend)
 
-# Builds the native Windows frontend: the Rust daemon (ntpodsd) and the WinUI 3
-# app (ntpods-winui, which carries its own tray), and packs them with
+# Builds the native Windows frontend: the Rust daemon (podatuid) and the WinUI 3
+# app (podatui-winui, which carries its own tray), and packs them with
 # everything else into ONE self-contained install folder. The end user gets only
 # that folder, so nothing may rely on tools installed on their PC (no WDK, no
 # Windows SDK, no VC++ redistributable).
@@ -96,9 +96,9 @@ jobs:
           Write-Host "Using MSBuild: $msbuild"
           # AAP: the WDK's own post-build Inf2Cat runs before the .sys sits next to
           # the .inf and fails the signability test — the catalog is made below.
-          & $msbuild windows/drivers/aap/NTPodsAAP.vcxproj /p:Configuration=Release /p:Platform=x64 /p:EnableInf2cat=false /m
+          & $msbuild windows/drivers/aap/PodatuiAAP.vcxproj /p:Configuration=Release /p:Platform=x64 /p:EnableInf2cat=false /m
           if ($LASTEXITCODE) { throw "AAP driver build failed (exit $LASTEXITCODE)" }
-          & $msbuild windows/drivers/mic-portcls/NTPodsMicPC.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+          & $msbuild windows/drivers/mic-portcls/PodatuiMicPC.vcxproj /p:Configuration=Release /p:Platform=x64 /m
           if ($LASTEXITCODE) { throw "PortCls mic driver build failed (exit $LASTEXITCODE)" }
           # ACX mic: the default on Windows 11 22H2+ (the installer picks per OS).
           & $msbuild windows/drivers/mic/AudioCodec/Driver/AudioCodec.sln /p:Configuration=Release /p:Platform=x64 /m
@@ -114,13 +114,13 @@ jobs:
 
           # name, freshly built .sys, the .inf to ship, catalog name, prebuilt dir
           $drivers = @(
-            @{ Name = 'NTPodsAAP'; Inf = 'windows/drivers/aap/NTPodsAAP.inf'; Cat = 'ntpodsaap.cat'
-               Sys = (Get-ChildItem windows/drivers/aap -Recurse -Filter NTPodsAAP.sys |
+            @{ Name = 'PodatuiAAP'; Inf = 'windows/drivers/aap/PodatuiAAP.inf'; Cat = 'podatuiaap.cat'
+               Sys = (Get-ChildItem windows/drivers/aap -Recurse -Filter PodatuiAAP.sys |
                         Where-Object { $_.FullName -match '\\x64\\Release\\' -and $_.FullName -notmatch '\\prebuilt\\' } |
                         Select-Object -First 1).FullName
                Out = 'windows/drivers/aap/prebuilt' },
-            @{ Name = 'NTPodsMicPC'; Inf = 'windows/drivers/mic-portcls/x64/Release/NTPodsMicPC.inf'; Cat = 'ntpodsmicpc.cat'
-               Sys = 'windows/drivers/mic-portcls/x64/Release/NTPodsMicPC.sys'
+            @{ Name = 'PodatuiMicPC'; Inf = 'windows/drivers/mic-portcls/x64/Release/PodatuiMicPC.inf'; Cat = 'podatuimicpc.cat'
+               Sys = 'windows/drivers/mic-portcls/x64/Release/PodatuiMicPC.sys'
                Out = 'windows/drivers/mic-portcls/prebuilt' },
             @{ Name = 'AudioCodec'; Inf = 'windows/drivers/mic/AudioCodec/Driver/x64/Release/AudioCodec.inf'; Cat = 'audiocodec.cat'
                Sys = 'windows/drivers/mic/AudioCodec/Driver/x64/Release/AudioCodec.sys'
@@ -154,7 +154,7 @@ jobs:
         shell: bash
         run: windows/daemon/fetch-ffmpeg.sh
 
-      - name: Build daemon (ntpodsd)
+      - name: Build daemon (podatuid)
         working-directory: windows/daemon
         # Static CRT: otherwise the msvc build imports VCRUNTIME140.dll, which a
         # clean Windows does not have, and the daemon won't start. (The FFmpeg
@@ -187,11 +187,11 @@ jobs:
 
       - name: Restore WinUI app
         working-directory: windows/winui
-        run: msbuild NTPods.WinUI/NTPods.WinUI.csproj -t:Restore -p:Configuration=Release -p:Platform=x64
+        run: msbuild Podatui.WinUI/Podatui.WinUI.csproj -t:Restore -p:Configuration=Release -p:Platform=x64
 
       - name: Build WinUI app
         working-directory: windows/winui
-        run: msbuild NTPods.WinUI/NTPods.WinUI.csproj -t:Build -p:Configuration=Release -p:Platform=x64 -p:RestorePackages=false
+        run: msbuild Podatui.WinUI/Podatui.WinUI.csproj -t:Build -p:Configuration=Release -p:Platform=x64 -p:RestorePackages=false
 
       # ---- Collect + upload artifacts ----------------------------------------
       - name: Assemble install folder
@@ -201,17 +201,17 @@ jobs:
           # local dist uses it too), and it fails if any file install.ps1 needs is
           # missing — so an incomplete bundle can't be uploaded again.
           # Find the WinUI output dir by locating the exe (path varies with TFM/RID).
-          $exe = Get-ChildItem -Recurse -Filter ntpods-winui.exe `
-            windows/winui/NTPods.WinUI/bin | Select-Object -First 1
-          if (-not $exe) { throw "WinUI build output (ntpods-winui.exe) not found" }
+          $exe = Get-ChildItem -Recurse -Filter podatui-winui.exe `
+            windows/winui/Podatui.WinUI/bin | Select-Object -First 1
+          if (-not $exe) { throw "WinUI build output (podatui-winui.exe) not found" }
           ./windows/installer/make-dist.ps1 -Out "$env:GITHUB_WORKSPACE/dist" `
-            -DaemonExe windows/daemon/target/release/ntpodsd.exe `
+            -DaemonExe windows/daemon/target/release/podatuid.exe `
             -WinUIDir $exe.Directory.FullName
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ntpods-windows-frontend
+          name: podatui-windows-frontend
           path: dist
           if-no-files-found: error
 
@@ -237,13 +237,13 @@ jobs:
           wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
           $version = '0.1.${{ github.run_number }}'
           if ('${{ github.ref }}' -match '^refs/tags/windows-v(\d+\.\d+\.\d+)$') { $version = $matches[1] }
-          ./windows/installer/msi/build-msi.ps1 -Dist dist -Version $version -Out NTPods.msi
+          ./windows/installer/msi/build-msi.ps1 -Dist dist -Version $version -Out podatui.msi
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ntpods-windows-msi
-          path: NTPods.msi
+          name: podatui-windows-msi
+          path: podatui.msi
           if-no-files-found: error
 
       # ---- Releases --------------------------------------------------------
@@ -254,7 +254,7 @@ jobs:
       - name: Package release zip
         if: startsWith(github.ref, 'refs/tags/windows-v') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         shell: pwsh
-        run: Compress-Archive -Path dist/* -DestinationPath NTPods-Windows.zip
+        run: Compress-Archive -Path dist/* -DestinationPath podatui-Windows.zip
 
       - name: Publish nightly pre-release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -268,19 +268,19 @@ jobs:
           $notes = @"
           Automatic build of ``main`` at ${{ github.sha }}.
 
-          Turn on Test Mode first (see windows/README.md), then run **NTPods.msi**.
+          Turn on Test Mode first (see windows/README.md), then run **podatui.msi**.
           It installs the app, the background service and both drivers, and lets
           you pick a desktop shortcut and starting with Windows.
 
-          NTPods-Windows.zip has the same files for a manual install: extract it and
+          podatui-Windows.zip has the same files for a manual install: extract it and
           run ``powershell -ExecutionPolicy Bypass -File .\install.ps1`` in an
           **admin** PowerShell inside the folder.
 
           Everything here was built from source in this run.
           "@
-          gh release create nightly NTPods.msi NTPods-Windows.zip `
+          gh release create nightly podatui.msi podatui-Windows.zip `
             --target ${{ github.sha }} --prerelease --latest=false `
-            --title "NTPods (nightly)" --notes $notes
+            --title "podatui (nightly)" --notes $notes
           if ($LASTEXITCODE) { throw "gh release create failed ($LASTEXITCODE)" }
 
       - name: Create versioned GitHub Release
@@ -288,10 +288,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: NTPods ${{ github.ref_name }}
+          name: podatui ${{ github.ref_name }}
           files: |
-            NTPods.msi
-            NTPods-Windows.zip
+            podatui.msi
+            podatui-Windows.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

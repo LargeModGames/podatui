@@ -1,5 +1,5 @@
-//! Writer for the NTPodsMic virtual microphone: pushes decoded PCM into the
-//! driver's ring buffer over the control device `\\.\NTPodsMic`.
+//! Writer for the PodatuiMic virtual microphone: pushes decoded PCM into the
+//! driver's ring buffer over the control device `\\.\PodatuiMic`.
 
 use std::ffi::c_void;
 use std::ptr;
@@ -14,13 +14,13 @@ use windows_sys::Win32::System::IO::DeviceIoControl;
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
 // CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_WRITE_DATA)
-const IOCTL_NTPODS_MIC_WRITE_PCM: u32 = 0x0022_A000;
+const IOCTL_PODATUI_MIC_WRITE_PCM: u32 = 0x0022_A000;
 // CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_READ_DATA)
-const IOCTL_NTPODS_MIC_STATUS: u32 = 0x0022_6004;
+const IOCTL_PODATUI_MIC_STATUS: u32 = 0x0022_6004;
 
-/// Which mic driver is loaded, for the log. Both expose the same `\\.\NTPodsMic`,
+/// Which mic driver is loaded, for the log. Both expose the same `\\.\PodatuiMic`,
 /// so the handle can't tell; the running kernel service can: ACX is the
-/// `AudioCodec` service (drivers/mic), PortCls is `NTPodsMicPC` (drivers/mic-portcls).
+/// `AudioCodec` service (drivers/mic), PortCls is `PodatuiMicPC` (drivers/mic-portcls).
 pub fn driver_kind() -> &'static str {
     use windows_sys::Win32::System::Services::{
         CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus,
@@ -45,8 +45,8 @@ pub fn driver_kind() -> &'static str {
             ok
         }
     };
-    match (running("NTPodsMicPC"), running("AudioCodec")) {
-        (true, false) => "PortCls (NTPodsMicPC)",
+    match (running("PodatuiMicPC"), running("AudioCodec")) {
+        (true, false) => "PortCls (PodatuiMicPC)",
         (false, true) => "ACX (AudioCodec)",
         (true, true) => "both PortCls and ACX are running",
         (false, false) => "none running",
@@ -64,10 +64,10 @@ unsafe impl Send for MicPipe {}
 unsafe impl Sync for MicPipe {}
 
 impl MicPipe {
-    /// Open the virtual-mic control device. None if the NTPodsMic driver
+    /// Open the virtual-mic control device. None if the PodatuiMic driver
     /// isn't installed (or another writer holds the exclusive handle).
     pub fn open() -> Option<MicPipe> {
-        let path: Vec<u16> = r"\\.\NTPodsMic"
+        let path: Vec<u16> = r"\\.\PodatuiMic"
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
@@ -98,7 +98,7 @@ impl MicPipe {
         let ok = unsafe {
             DeviceIoControl(
                 self.handle,
-                IOCTL_NTPODS_MIC_STATUS,
+                IOCTL_PODATUI_MIC_STATUS,
                 ptr::null(),
                 0,
                 out.as_mut_ptr() as *mut c_void,
@@ -125,7 +125,7 @@ impl MicPipe {
         let ok = unsafe {
             DeviceIoControl(
                 self.handle,
-                IOCTL_NTPODS_MIC_WRITE_PCM,
+                IOCTL_PODATUI_MIC_WRITE_PCM,
                 samples.as_ptr() as *const c_void,
                 bytes as u32,
                 ptr::null_mut(),

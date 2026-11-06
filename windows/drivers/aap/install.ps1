@@ -1,5 +1,5 @@
 <#
-    install.ps1 - test-sign, trust and install the NTPodsAAP driver.
+    install.ps1 - test-sign, trust and install the PodatuiAAP driver.
 
     RUN AS ADMINISTRATOR, and only AFTER you have:
       1. Backed up your BitLocker recovery key.
@@ -7,8 +7,8 @@
       3. Disabled Secure Boot in your firmware/BIOS.
       4. Enabled test signing:  bcdedit /set testsigning on   (then rebooted).
 
-    Pass the folder that holds NTPodsAAP.sys + NTPodsAAP.inf (+ .cat).
-    Example:  .\install.ps1 -PackageDir "C:\Users\Pedro Lopes\NTPodsAAP\package"
+    Pass the folder that holds PodatuiAAP.sys + PodatuiAAP.inf (+ .cat).
+    Example:  .\install.ps1 -PackageDir "C:\Users\you\PodatuiAAP\package"
 #>
 param(
     [Parameter(Mandatory = $true)]
@@ -16,16 +16,16 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$sys = Join-Path $PackageDir 'NTPodsAAP.sys'
-$cat = Join-Path $PackageDir 'ntpodsaap.cat'
-$inf = Join-Path $PackageDir 'NTPodsAAP.inf'
+$sys = Join-Path $PackageDir 'PodatuiAAP.sys'
+$cat = Join-Path $PackageDir 'podatuiaap.cat'
+$inf = Join-Path $PackageDir 'PodatuiAAP.inf'
 foreach ($f in @($sys, $cat, $inf)) {
     if (-not (Test-Path $f)) { throw "Missing $f" }
 }
 
 Write-Host "==> Creating test code-signing certificate..."
 $cert = New-SelfSignedCertificate -Type CodeSigningCert `
-    -Subject "CN=NTPods Test Cert" `
+    -Subject "CN=podatui Test Cert" `
     -CertStoreLocation Cert:\LocalMachine\My `
     -KeyUsage DigitalSignature -KeyExportPolicy Exportable
 
@@ -51,11 +51,11 @@ if ($LASTEXITCODE -ne 0) { throw "inf2cat failed ($LASTEXITCODE)" }
 
 & $signtool sign /v /fd SHA256 /sm /s My /sha1 $cert.Thumbprint $cat
 
-Write-Host "==> Removing any previously installed NTPodsAAP package..."
+Write-Host "==> Removing any previously installed PodatuiAAP package..."
 $oem = $null
 pnputil /enum-drivers | ForEach-Object {
     if ($_ -match 'Published Name\s*:\s*(oem\d+\.inf)') { $oem = $matches[1] }
-    if ($_ -match 'Original Name\s*:\s*NTPodsAAP\.inf' -and $oem) {
+    if ($_ -match 'Original Name\s*:\s*PodatuiAAP\.inf' -and $oem) {
         Write-Host "    deleting $oem"
         pnputil /delete-driver $oem /uninstall /force | Out-Null
     }
@@ -66,4 +66,4 @@ pnputil /add-driver $inf /install
 
 Write-Host "`n==> Done. Check binding with:"
 Write-Host '    pnputil /enum-devices /class Bluetooth'
-Write-Host '    (look for the {74ec2172-...} AAP service now driven by NTPodsAAP)'
+Write-Host '    (look for the {74ec2172-...} AAP service now driven by PodatuiAAP)'

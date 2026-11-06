@@ -85,7 +85,7 @@ STDMETHODIMP_(NTSTATUS) CTopoMiniport::DataRangeIntersection(
 
 NTSTATUS CreateTopoMiniport(_Out_ PUNKNOWN* Unknown)
 {
-    CTopoMiniport* m = new (POOL_FLAG_NON_PAGED, NTPODS_POOLTAG) CTopoMiniport(NULL);
+    CTopoMiniport* m = new (POOL_FLAG_NON_PAGED, PODATUI_POOLTAG) CTopoMiniport(NULL);
     if (!m) {
         *Unknown = NULL;
         return STATUS_INSUFFICIENT_RESOURCES;

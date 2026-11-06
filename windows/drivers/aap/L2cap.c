@@ -3,7 +3,7 @@
     Blocks (BRBs) submitted to the stack via IOCTL_INTERNAL_BTH_SUBMIT_BRB.
 --*/
 
-#include "NTPodsAAP.h"
+#include "PodatuiAAP.h"
 
 //
 // Submit a BRB synchronously to the Bluetooth stack (our parent I/O target).
@@ -142,7 +142,7 @@ LpConnect(
         Ctx->ChannelHandle = brb->ChannelHandle;
         Ctx->State         = LpConnected;
         WdfSpinLockRelease(Ctx->Lock);
-        KdPrint(("NTPodsAAP: L2CAP connected (handle=%p)\n", brb->ChannelHandle));
+        KdPrint(("PodatuiAAP: L2CAP connected (handle=%p)\n", brb->ChannelHandle));
         // NB: the ATT (PSM 0x001F) channel is opened LAZILY — on the first hearing-aid
         // ATT write (see LpAttSend), NOT here. The buds' ATT server is dormant until
         // hearing-assist is enabled, so opening a second L2CAP channel to it on every
@@ -159,7 +159,7 @@ LpConnect(
         Ctx->State         = LpDisconnected;
         Ctx->ChannelHandle = NULL;
         WdfSpinLockRelease(Ctx->Lock);
-        KdPrint(("NTPodsAAP: L2CAP connect failed 0x%08X\n", status));
+        KdPrint(("PodatuiAAP: L2CAP connect failed 0x%08X\n", status));
     }
 
     Ctx->BthInterface.BthFreeBrb((PBRB)brb);
@@ -215,9 +215,9 @@ LpConnectAtt(
     }
     WdfSpinLockRelease(Ctx->Lock);
     if (NT_SUCCESS(status)) {
-        KdPrint(("NTPodsAAP: *** ATT client channel OPEN (handle=%p) ***\n", brb->ChannelHandle));
+        KdPrint(("PodatuiAAP: *** ATT client channel OPEN (handle=%p) ***\n", brb->ChannelHandle));
     } else {
-        KdPrint(("NTPodsAAP: ATT client open FAILED 0x%08X\n", status));
+        KdPrint(("PodatuiAAP: ATT client open FAILED 0x%08X\n", status));
     }
 
     Ctx->BthInterface.BthFreeBrb((PBRB)brb);
@@ -353,7 +353,7 @@ LpDisconnect(
     (VOID)LpSubmitBrbSync(Ctx, (PBRB)brb);
     Ctx->BthInterface.BthFreeBrb((PBRB)brb);
 
-    KdPrint(("NTPodsAAP: disconnected\n"));
+    KdPrint(("PodatuiAAP: disconnected\n"));
     return STATUS_SUCCESS;
 }
 
@@ -467,7 +467,7 @@ LpIndicationCallback(
         ctx->State         = LpDisconnected;
         ctx->ChannelHandle = NULL;
         WdfSpinLockRelease(ctx->Lock);
-        KdPrint(("NTPodsAAP: remote disconnected the channel\n"));
+        KdPrint(("PodatuiAAP: remote disconnected the channel\n"));
         break;
     default:
         break;
@@ -514,9 +514,9 @@ LpRegisterAttServer(
     if (NT_SUCCESS(status)) {
         Ctx->AttServerHandle     = brb->ServerHandle;
         Ctx->AttServerRegistered = TRUE;
-        KdPrint(("NTPodsAAP: ATT server registered on PSM 0x%04X\n", PSM_ATT));
+        KdPrint(("PodatuiAAP: ATT server registered on PSM 0x%04X\n", PSM_ATT));
     } else {
-        KdPrint(("NTPodsAAP: ATT server register FAILED 0x%08X\n", status));
+        KdPrint(("PodatuiAAP: ATT server register FAILED 0x%08X\n", status));
     }
 
     Ctx->BthInterface.BthFreeBrb((PBRB)brb);
@@ -547,7 +547,7 @@ LpUnregisterAttServer(
         Ctx->BthInterface.BthFreeBrb((PBRB)brb);
     }
     Ctx->AttServerRegistered = FALSE;
-    KdPrint(("NTPodsAAP: ATT server unregistered\n"));
+    KdPrint(("PodatuiAAP: ATT server unregistered\n"));
 }
 
 //
@@ -570,7 +570,7 @@ LpAttServerIndication(
 
     switch (Indication) {
     case IndicationRemoteConnect:
-        KdPrint(("NTPodsAAP: *** ATT connect indication from 0x%012I64X on PSM 0x001F "
+        KdPrint(("PodatuiAAP: *** ATT connect indication from 0x%012I64X on PSM 0x001F "
                  "-- accepting ***\n", Parameters->BtAddress));
         WdfSpinLockAcquire(ctx->Lock);
         ctx->PendingAttConn = Parameters->ConnectionHandle;
@@ -584,7 +584,7 @@ LpAttServerIndication(
         ctx->AttConnected     = FALSE;
         ctx->AttChannelHandle = NULL;
         WdfSpinLockRelease(ctx->Lock);
-        KdPrint(("NTPodsAAP: ATT channel disconnected by remote\n"));
+        KdPrint(("PodatuiAAP: ATT channel disconnected by remote\n"));
         break;
     default:
         break;
@@ -644,9 +644,9 @@ LpAttAcceptWorkItem(
     }
     WdfSpinLockRelease(ctx->Lock);
     if (NT_SUCCESS(status)) {
-        KdPrint(("NTPodsAAP: *** ATT channel ACCEPTED (handle=%p) ***\n", brb->ChannelHandle));
+        KdPrint(("PodatuiAAP: *** ATT channel ACCEPTED (handle=%p) ***\n", brb->ChannelHandle));
     } else {
-        KdPrint(("NTPodsAAP: ATT accept FAILED 0x%08X\n", status));
+        KdPrint(("PodatuiAAP: ATT accept FAILED 0x%08X\n", status));
     }
 
     ctx->BthInterface.BthFreeBrb((PBRB)brb);
@@ -683,5 +683,5 @@ LpCloseAttChannel(
         (VOID)LpSubmitBrbSync(Ctx, (PBRB)brb);
         Ctx->BthInterface.BthFreeBrb((PBRB)brb);
     }
-    KdPrint(("NTPodsAAP: ATT channel closed\n"));
+    KdPrint(("PodatuiAAP: ATT channel closed\n"));
 }

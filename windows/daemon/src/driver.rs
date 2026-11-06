@@ -1,4 +1,4 @@
-//! Bridge to the NTPodsAAP kernel driver. Cloneable + thread-safe so the
+//! Bridge to the PodatuiAAP kernel driver. Cloneable + thread-safe so the
 //! background receive loop and the tray's ANC-send can share one handle.
 
 use std::ffi::c_void;
@@ -21,11 +21,11 @@ use windows_sys::core::GUID;
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
 
-const GUID_DEVINTERFACE_NTPODSAAP: GUID = GUID {
-    data1: 0xC0FF_EE00,
-    data2: 0x1337,
-    data3: 0x4A5B,
-    data4: [0x9E, 0x6F, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6],
+const GUID_DEVINTERFACE_PODATUIAAP: GUID = GUID {
+    data1: 0xD444_2874,
+    data2: 0x6398,
+    data3: 0x4BF6,
+    data4: [0x8D, 0xF3, 0x45, 0x86, 0xF4, 0x6B, 0x8B, 0xCD],
 };
 
 const IOCTL_LP_CONNECT: u32 = 0x8000_2000;
@@ -152,7 +152,7 @@ impl Driver {
 fn open_driver() -> io::Result<HANDLE> {
     unsafe {
         let devinfo = SetupDiGetClassDevsW(
-            &GUID_DEVINTERFACE_NTPODSAAP,
+            &GUID_DEVINTERFACE_PODATUIAAP,
             ptr::null(),
             ptr::null_mut(),
             DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
@@ -166,7 +166,7 @@ fn open_driver() -> io::Result<HANDLE> {
         if SetupDiEnumDeviceInterfaces(
             devinfo,
             ptr::null(),
-            &GUID_DEVINTERFACE_NTPODSAAP,
+            &GUID_DEVINTERFACE_PODATUIAAP,
             0,
             &mut ifdata,
         ) == 0
@@ -174,7 +174,7 @@ fn open_driver() -> io::Result<HANDLE> {
             SetupDiDestroyDeviceInfoList(devinfo);
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                "NTPodsAAP driver not found (installed and bound to the AirPods?)",
+                "PodatuiAAP driver not found (installed and bound to the AirPods?)",
             ));
         }
 

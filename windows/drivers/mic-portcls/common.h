@@ -1,12 +1,12 @@
 /*
-    NTPodsMicPC — the NTPods virtual microphone on PortCls/WaveRT.
+    PodatuiMicPC — the podatui virtual microphone on PortCls/WaveRT.
 
-    One of NTPods' two mic drivers. The ACX one in ../mic only loads on Windows
+    One of podatui's two mic drivers. The ACX one in ../mic only loads on Windows
     11 22H2+ (and is the default there); PortCls exists on Windows 10 and 11
     alike, so this one covers everything older (issue #14) and can be picked on
     Windows 11 too. It is capture only: one mono 16-bit 48 kHz endpoint fed by the
     daemon through the same control device and IOCTLs as the ACX driver
-    (\\.\NTPodsMic), so ntpodsd works with either.
+    (\\.\PodatuiMic), so podatuid works with either.
 
     Files:
       driver.cpp  DriverEntry, IRP routing, adapter start, control device, ring
@@ -20,7 +20,7 @@
 #include <stdunk.h>
 #include <ksmedia.h>
 
-#define NTPODS_POOLTAG 'cMTN'
+#define PODATUI_POOLTAG 'cMtP'
 
 // Pins. Wave filter: 0 = bridge in (from topology), 1 = capture out (to the app).
 // Topology filter: 0 = microphone in, 1 = bridge out (to wave).
@@ -38,9 +38,9 @@
 
 // Same codes as ../mic/Common/MicPipe.h: the daemon doesn't know which driver it
 // talks to.
-#define IOCTL_NTPODS_MIC_WRITE_PCM \
+#define IOCTL_PODATUI_MIC_WRITE_PCM \
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_WRITE_DATA)
-#define IOCTL_NTPODS_MIC_STATUS \
+#define IOCTL_PODATUI_MIC_STATUS \
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_READ_DATA)
 
 // Ring (driver.cpp).

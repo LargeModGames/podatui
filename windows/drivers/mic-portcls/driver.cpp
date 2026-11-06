@@ -28,7 +28,7 @@ static UCHAR         g_Ring[RING_BYTES];
 static ULONG         g_Head, g_Tail, g_Count;
 static KSPIN_LOCK    g_RingLock;
 static BOOLEAN       g_RingInited;
-static volatile LONG g_ReadTick;  // advances on every capture pull (IOCTL_NTPODS_MIC_STATUS)
+static volatile LONG g_ReadTick;  // advances on every capture pull (IOCTL_PODATUI_MIC_STATUS)
 
 VOID MicRingInit()
 {
@@ -105,7 +105,7 @@ VOID MicRingRead(_Out_writes_bytes_(Len) PVOID Out, _In_ ULONG Len)
     KeReleaseSpinLock(&g_RingLock, irql);
 }
 
-// ---- control device (\\.\NTPodsMic) ----------------------------------------------
+// ---- control device (\\.\PodatuiMic) ----------------------------------------------
 // A plain WDM device next to PortCls's FDO. PortCls owns the driver's dispatch
 // table, so every major function goes through RouteIrp: IRPs for the control
 // device are handled here, everything else goes to PortCls unchanged.
@@ -118,7 +118,7 @@ static PDRIVER_UNLOAD  g_PcUnload;
 // by comparing with g_Control: after the audio device is removed, g_Control is
 // cleared but a handle the daemon still holds keeps the object alive, and its
 // IRPs must never reach PortCls, which would read them as its own device.
-#define CONTROL_MAGIC 'lCTN'
+#define CONTROL_MAGIC 'lCtP'
 typedef struct { ULONG Magic; } CONTROL_EXT;
 
 static BOOLEAN IsControlDevice(_In_ PDEVICE_OBJECT Device)
@@ -131,11 +131,11 @@ static NTSTATUS CreateControlDevice(_In_ PDRIVER_OBJECT Driver)
 {
     // SYSTEM: all, Admins: RWX, Everyone: RW, so the unelevated daemon can open it.
     DECLARE_CONST_UNICODE_STRING(sddl, L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GRGW;;;WD)");
-    DECLARE_CONST_UNICODE_STRING(ntName, L"\\Device\\NTPodsMic");
-    DECLARE_CONST_UNICODE_STRING(link, L"\\DosDevices\\NTPodsMic");
+    DECLARE_CONST_UNICODE_STRING(ntName, L"\\Device\\PodatuiMic");
+    DECLARE_CONST_UNICODE_STRING(link, L"\\DosDevices\\PodatuiMic");
     // Any fixed GUID works here; it only names the security class of the object.
     static const GUID classGuid =
-        { 0x5c0f3a1e, 0x8d2b, 0x4f6a, { 0x9e, 0x31, 0x7b, 0x42, 0xa8, 0x6d, 0x10, 0xc5 } };
+        { 0xabb5e8bd, 0x62e7, 0x4c47, { 0xbc, 0x8d, 0x91, 0xb2, 0x40, 0x26, 0xaf, 0x6d } };
 
     if (g_Control) {
         return STATUS_SUCCESS;
@@ -162,7 +162,7 @@ static NTSTATUS CreateControlDevice(_In_ PDRIVER_OBJECT Driver)
 
 static VOID DeleteControlDevice()
 {
-    DECLARE_CONST_UNICODE_STRING(link, L"\\DosDevices\\NTPodsMic");
+    DECLARE_CONST_UNICODE_STRING(link, L"\\DosDevices\\PodatuiMic");
     if (g_Control) {
         IoDeleteSymbolicLink((PUNICODE_STRING)&link);
         IoDeleteDevice(g_Control);
@@ -187,7 +187,7 @@ static NTSTATUS ControlIrp(_Inout_ PIRP Irp)
         ULONG in = stack->Parameters.DeviceIoControl.InputBufferLength;
         ULONG out = stack->Parameters.DeviceIoControl.OutputBufferLength;
         switch (stack->Parameters.DeviceIoControl.IoControlCode) {
-        case IOCTL_NTPODS_MIC_WRITE_PCM:
+        case IOCTL_PODATUI_MIC_WRITE_PCM:
             if (buf && in) {
                 MicRingWrite(buf, in);
                 info = in;
@@ -196,7 +196,7 @@ static NTSTATUS ControlIrp(_Inout_ PIRP Irp)
                 status = STATUS_INVALID_PARAMETER;
             }
             break;
-        case IOCTL_NTPODS_MIC_STATUS:
+        case IOCTL_PODATUI_MIC_STATUS:
             if (buf && out >= sizeof(LONG)) {
                 *(LONG*)buf = InterlockedCompareExchange(&g_ReadTick, 0, 0);
                 info = sizeof(LONG);

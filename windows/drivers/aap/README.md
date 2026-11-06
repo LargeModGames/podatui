@@ -1,11 +1,11 @@
-# NTPodsAAP — Windows AAP L2CAP driver
+# PodatuiAAP — Windows AAP L2CAP driver
 
 Open-source KMDF Bluetooth **profile driver** that lets Windows talk to AirPods
 over Apple's Accessory Protocol (AAP). AAP runs on a classic-Bluetooth **L2CAP
 channel at PSM `0x1001`**, which Windows user-mode Winsock cannot open (only
 RFCOMM is exposed; raw L2CAP `connect()` fails with `WSAENETDOWN`). This driver
 opens that channel in kernel mode and bridges it to user space via
-`DeviceIoControl`, so the NTPods app can read battery, toggle ANC, etc.
+`DeviceIoControl`, so the podatui app can read battery, toggle ANC, etc.
 
 ## How it binds (the key trick)
 
@@ -22,17 +22,17 @@ service. Architecture reference: MS `bthecho` sample + `nefarius/BthPS3`.
 
 | File | Role |
 |------|------|
-| `NTPodsAAP.h` | IOCTL contract, device context, prototypes |
+| `PodatuiAAP.h` | IOCTL contract, device context, prototypes |
 | `Driver.c` | `DriverEntry`, device creation, IOCTL queue |
 | `Device.c` | PnP: query `BTH_PROFILE_DRIVER_INTERFACE`, get I/O target |
 | `L2cap.c` | connect / disconnect / send / receive via BRBs |
 | `Ioctl.c` | user-mode bridge (DeviceIoControl → L2CAP) |
-| `NTPodsAAP.inf` | binds to the AAP service, installs KMDF service |
-| `NTPodsAAP.vcxproj` | KMDF x64 project |
+| `PodatuiAAP.inf` | binds to the AAP service, installs KMDF service |
+| `PodatuiAAP.vcxproj` | KMDF x64 project |
 
 ## IOCTL contract (for the user-mode transport)
 
-Device interface GUID `{C0FFEE00-1337-4A5B-9E6F-A1B2C3D4E5F6}`, `FILE_DEVICE 0x8000`:
+Device interface GUID `{D4442874-6398-4BF6-8DF3-4586F46B8BCD}`, `FILE_DEVICE 0x8000`:
 `CONNECT 0x800 {u64 addr; u16 psm}`, `DISCONNECT 0x801`, `SEND 0x802` (raw bytes),
 `RECEIVE 0x803` (raw bytes out), `GET_STATUS 0x804`.
 
@@ -42,10 +42,10 @@ Needs VS2022/2026 with the C++ workload + Windows SDK/WDK (matching build number
 e.g. 28000). From a Developer prompt:
 
 ```
-msbuild NTPodsAAP.vcxproj /p:Configuration=Release /p:Platform=x64
+msbuild PodatuiAAP.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
 
-Then generate the catalog from a folder holding `NTPodsAAP.sys` + `.inf`:
+Then generate the catalog from a folder holding `PodatuiAAP.sys` + `.inf`:
 
 ```
 inf2cat /driver:<pkg-dir> /os:10_X64
@@ -71,17 +71,17 @@ Manually, step by step:
 
 ```powershell
 # 1. test cert + sign
-$c = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=NTPods Test" -CertStoreLocation Cert:\LocalMachine\My
-signtool sign /fd SHA256 /sha1 $c.Thumbprint NTPodsAAP.sys
-signtool sign /fd SHA256 /sha1 $c.Thumbprint ntpodsaap.cat
+$c = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=podatui Test" -CertStoreLocation Cert:\LocalMachine\My
+signtool sign /fd SHA256 /sha1 $c.Thumbprint PodatuiAAP.sys
+signtool sign /fd SHA256 /sha1 $c.Thumbprint podatuiaap.cat
 # 2. trust the cert (Trusted Root + Trusted Publishers, LocalMachine)
 # 3. enable test signing, disable Secure Boot in firmware, reboot
 bcdedit /set testsigning on
 # 4. install (binds to the AirPods AAP devnode)
-pnputil /add-driver NTPodsAAP.inf /install
+pnputil /add-driver PodatuiAAP.inf /install
 ```
 
-Uninstall: `pnputil /delete-driver NTPodsAAP.inf /uninstall`, then
+Uninstall: `pnputil /delete-driver PodatuiAAP.inf /uninstall`, then
 `bcdedit /set testsigning off` and re-enable Secure Boot.
 
 ## Status

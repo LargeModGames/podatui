@@ -1,4 +1,4 @@
-# NTPods on Windows
+# podatui on Windows
 
 Open-source AirPods control for Windows: battery, noise control, ear detection,
 conversational awareness, volume/mute, hearing aid, device rename, the AirPods'
@@ -7,10 +7,10 @@ conversational awareness, volume/mute, hearing aid, device rename, the AirPods'
 
 It has these parts:
 
-1. **`NTPodsAAP` kernel driver** ([`drivers/aap`](drivers/aap)) — opens the Apple
+1. **`PodatuiAAP` kernel driver** ([`drivers/aap`](drivers/aap)) — opens the Apple
    Accessory Protocol (AAP) L2CAP channel to the AirPods in kernel mode, which
    normal Windows apps cannot do, and exposes it via IOCTLs.
-2. **`NTPodsMic` kernel driver** — a virtual audio device that publishes the
+2. **`PodatuiMic` kernel driver** — a virtual audio device that publishes the
    AirPods' decoded hi-res mic as a Windows capture endpoint (Teams / Zoom /
    Discord / OBS …). There are two versions and the installer puts one of them in:
    - **ACX** ([`drivers/mic`](drivers/mic)), the default on **Windows 11 22H2 or
@@ -23,10 +23,10 @@ It has these parts:
    They behave the same for apps and the daemon; `daemon.log` says which one is
    loaded (`mic driver: ...`). Before Windows 10 2004 the installer skips the mic
    and you keep the AirPods' normal hands-free mic.
-3. **`ntpodsd` daemon** ([`daemon`](daemon)) — owns both drivers, the AAP session
+3. **`podatuid` daemon** ([`daemon`](daemon)) — owns both drivers, the AAP session
    and the mic pipeline (AAC-ELD decode), and serves UI clients over named-pipe IPC.
    It holds the authoritative state.
-4. **`ntpods-winui` app** ([`winui`](winui)) — the native **WinUI 3** client; it
+4. **`podatui-winui` app** ([`winui`](winui)) — the native **WinUI 3** client; it
    lives in the system tray (closing hides it there) and is an IPC client of the
    daemon. It's what you run day-to-day.
 
@@ -52,27 +52,27 @@ work, hi-res mic included (2004 or newer), but I've only tested on Windows 11.
    You should see "Test Mode" in the bottom-right of the desktop.
 
 ### b) Install with the MSI (recommended)
-Download **`NTPods.msi`** from the
-[`nightly` release](https://github.com/arctumn/ntpods/releases/tag/nightly)
+Download **`podatui.msi`** from the
+[`nightly` release](https://github.com/LargeModGames/podatui/releases/tag/nightly)
 (rebuilt on every push to `main`) and run it. It stops if Test Mode isn't on.
 You can choose:
 
 - **Drivers**: test-signs and installs both drivers on this PC. Leave it on.
 - **Desktop shortcut**
-- **Start with Windows**: starts NTPods in the tray when you sign in (you can
+- **Start with Windows**: starts podatui in the tray when you sign in (you can
   change this later in the app's settings).
 
-It installs to `C:\Program Files\NTPods`, registers the driver-recovery and
+It installs to `C:\Program Files\podatui`, registers the driver-recovery and
 mic-rename tasks, and takes over an older LibrePods or zip install (your settings
 and heart-rate history are kept). Restart when it asks. Uninstall from
 **Settings ▸ Apps**; that also removes the drivers, the tasks and the test
-certificate. If something fails, the log is in `%ProgramData%\NTPods\setup.log`.
+certificate. If something fails, the log is in `%ProgramData%\podatui\setup.log`.
 
 To build the MSI yourself: [`installer/msi/build-msi.ps1`](installer/msi/build-msi.ps1)
 (WiX 5) on a folder made by [`installer/make-dist.ps1`](installer/make-dist.ps1).
 
 ### b2) Install from the zip
-**`NTPods-Windows.zip`** on the same release has the same files. Extract it and
+**`podatui-Windows.zip`** on the same release has the same files. Extract it and
 run [`installer/install.ps1`](installer/install.ps1) from an **admin** PowerShell
 inside the extracted folder:
 
@@ -81,8 +81,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 It checks Test Mode is on, test-signs and installs **both** drivers, copies
-`ntpodsd.exe` + `ntpods-winui.exe` (and the FFmpeg DLLs) to
-`%LOCALAPPDATA%\NTPods`, registers the driver-recovery and mic-rename tasks,
+`podatuid.exe` + `podatui-winui.exe` (and the FFmpeg DLLs) to
+`%LOCALAPPDATA%\podatui`, registers the driver-recovery and mic-rename tasks,
 and adds the app to startup. The folder is self-contained: no Windows SDK/WDK,
 Visual Studio or VC++ redistributable needed. Reboot afterwards.
 
@@ -100,10 +100,10 @@ only come from CI (or your own WDK build).
 Success for the AAP driver shows `Driver package installed on device:
 BTHENUM\{74ec2172-...}`. Check it loaded (should be `OK`, not error 52):
 ```powershell
-Get-PnpDevice -FriendlyName "NTPods AAP*" | Select Status
+Get-PnpDevice -FriendlyName "podatui AAP*" | Select Status
 ```
 The mic driver needs a ROOT device created with `devcon` (`ROOT\AudioCodec` for
-ACX, `ROOT\NTPodsMicPC` for PortCls), so the simplest way to install, update or
+ACX, `ROOT\PodatuiMicPC` for PortCls), so the simplest way to install, update or
 switch just the mic is the zip's `install.ps1`, which removes the other one first.
 A virtual microphone should appear in **Sound ▸ Input**.
 
@@ -115,7 +115,7 @@ C++** + **Spectre x64/x86 libs** + a **Windows 11 SDK** and the **matching WDK**
 (SDK & WDK build numbers must match, e.g. `28000`). See
 [`drivers/aap/README.md`](drivers/aap/README.md) and
 [`drivers/mic/README.md`](drivers/mic/README.md); the PortCls mic is a plain vcxproj,
-[`drivers/mic-portcls/NTPodsMicPC.vcxproj`](drivers/mic-portcls/NTPodsMicPC.vcxproj).
+[`drivers/mic-portcls/PodatuiMicPC.vcxproj`](drivers/mic-portcls/PodatuiMicPC.vcxproj).
 
 ### Uninstall / revert
 ```powershell
@@ -123,10 +123,10 @@ pnputil /delete-driver oem<N>.inf /uninstall   # find <N> with: pnputil /enum-dr
 bcdedit /set testsigning off                    # then re-enable Secure Boot in BIOS
 ```
 The app's data (settings, logs, the heart-rate history) lives in
-`%LOCALAPPDATA%\NTPods` — delete that folder to remove it too.
+`%LOCALAPPDATA%\podatui` — delete that folder to remove it too.
 
 ### Something doesn't work?
-Open a [bug report](https://github.com/arctumn/ntpods/issues/new?template=bug_report.yml).
+Open a [bug report](https://github.com/LargeModGames/podatui/issues/new?template=bug_report.yml).
 The form has a PowerShell command that collects the logs and device status into
 one file, so I can see what went wrong without a back-and-forth.
 
@@ -134,15 +134,15 @@ one file, so I can see what went wrong without a back-and-forth.
 
 ## 2. Run the app
 
-Two pieces run: the **daemon** (`ntpodsd.exe`, headless) and the **WinUI app**
-(`ntpods-winui.exe`). Build the daemon natively on Windows, or from WSL/Linux
+Two pieces run: the **daemon** (`podatuid.exe`, headless) and the **WinUI app**
+(`podatui-winui.exe`). Build the daemon natively on Windows, or from WSL/Linux
 (cross-compiled): `cargo build --release --target x86_64-pc-windows-gnu` in
 `daemon/` — run `daemon/fetch-ffmpeg.sh` first, the FFmpeg slice used for AAC-ELD
 decoding is fetched, not committed. Build the WinUI app with Visual Studio's
 MSBuild (`dotnet build` can't load the WinUI PRI task). The release zip bundles
 both, the FFmpeg DLLs and the two drivers CI built from source.
 
-Launch `ntpods-winui.exe`; it auto-starts the daemon, shows a tray icon, and its
+Launch `podatui-winui.exe`; it auto-starts the daemon, shows a tray icon, and its
 window hides to the tray on close. To start it at login, use the installer (which
 registers it) or [`startup.ps1`](startup.ps1).
 
@@ -165,7 +165,7 @@ registers it) or [`startup.ps1`](startup.ps1).
 
 ### The hi-res microphone
 The daemon watches the virtual mic's capture-activity counter: when any app opens
-"NTPods" as its microphone, it enables the AAP uplink automatically, decodes the
+"podatui" as its microphone, it enables the AAP uplink automatically, decodes the
 AAC-ELD stream and feeds the driver; when the app releases the mic it stops
 (debounced) and restores A2DP stereo. There's a manual toggle too. While the mic is
 active the AirPods are in their bidirectional call mode, so playback is mono — that
@@ -181,7 +181,7 @@ the sensor settles you get one reading per second:
   of it, with its stats and the time of each point.
 
 Every reading is kept in a dedicated SQLite database,
-`%LOCALAPPDATA%\NTPods\heart-rate.sqlite3` (`sessions` + `samples`: time, BPM
+`%LOCALAPPDATA%\podatui\heart-rate.sqlite3` (`sessions` + `samples`: time, BPM
 and the sensor's confidence), so you can also query it with any SQLite tool. It
 uses extra battery while it's on.
 
