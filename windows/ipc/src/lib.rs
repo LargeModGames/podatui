@@ -98,6 +98,26 @@ pub struct Snapshot {
     /// (serde default: older snapshots.)
     #[serde(default)]
     pub driverless: bool,
+    /// Our render endpoint is active, whether or not the AAP session is up.
+    #[serde(default)]
+    pub audio_connected: bool,
+    #[serde(default)]
+    pub ble_match: BleMatch,
+    /// Bluetooth product ID of the paired AirPods (0x2027 = Pro 3), 0 if unknown.
+    #[serde(default)]
+    pub product_id: u16,
+}
+
+/// How confidently a nearby BLE advert is matched to the paired AirPods.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BleMatch {
+    #[default]
+    None,
+    Ambiguous,
+    Likely,
+    Weak,
+    Bound,
 }
 
 /// One host connected to the AirPods, as reported by the buds themselves.
@@ -204,7 +224,16 @@ pub enum Event {
     Overlay { title: String, body: String },
     /// The device is nearby (BLE) but not connected — the client shows a
     /// clickable card; a click sends `Command::Connect`.
-    ConnectPrompt { name: String },
+    ConnectPrompt {
+        name: String,
+        #[serde(default)]
+        battery: Option<Battery>,
+        #[serde(default)]
+        product_id: u16,
+        /// A connect attempt failed: the AirPods may be in use on another device.
+        #[serde(default)]
+        busy: bool,
+    },
 }
 
 /// Which UI a client is.

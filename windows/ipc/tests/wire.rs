@@ -1,5 +1,5 @@
 use podatui_ipc::{
-    from_line, to_line, Battery, ClientKind, Command, ConnectedDevice, Event, Snapshot,
+    from_line, to_line, Battery, BleMatch, ClientKind, Command, ConnectedDevice, Event, Snapshot,
 };
 
 const DEFAULT_SNAPSHOT: &str = concat!(
@@ -9,7 +9,7 @@ const DEFAULT_SNAPSHOT: &str = concat!(
     r#""anc":0,"mic_recording":false,"mic_available":false,"auto_mode":false,"#,
     r#""conversational_awareness":false,"adaptive_volume":false,"allow_off":false,"#,
     r#""volume":0,"muted":false,"heart_rate":null,"model":"","firmware":"","serial":"","#,
-    r#""multipoint":[],"driverless":false}"#
+    r#""multipoint":[],"driverless":false,"audio_connected":false,"ble_match":"none","product_id":0}"#
 );
 
 const FULL_STATE_EVENT: &str = concat!(
@@ -21,7 +21,7 @@ const FULL_STATE_EVENT: &str = concat!(
     r#""volume":55,"muted":false,"heart_rate":72,"model":"A3063","firmware":"8A356","serial":"ABC123","#,
     r#""multipoint":[{"address":"aa:bb:cc:dd:ee:ff","is_this_pc":true,"name":"This PC","kind":"pc"},"#,
     r#"{"address":"11:22:33:44:55:66","is_this_pc":false,"name":"Unknown device","kind":"phone"}],"#,
-    r#""driverless":true}"#
+    r#""driverless":true,"audio_connected":true,"ble_match":"bound","product_id":8231}"#
 );
 
 fn full_snapshot() -> Snapshot {
@@ -67,6 +67,9 @@ fn full_snapshot() -> Snapshot {
             },
         ],
         driverless: true,
+        audio_connected: true,
+        ble_match: BleMatch::Bound,
+        product_id: 0x2027,
     }
 }
 
@@ -123,10 +126,115 @@ fn overlay_event_line() {
 fn connect_prompt_event_line() {
     let ev = Event::ConnectPrompt {
         name: "AirPods Pro".into(),
+        battery: None,
+        product_id: 0,
+        busy: false,
     };
     assert_eq!(
         to_line(&ev),
-        "{\"event\":\"connect_prompt\",\"name\":\"AirPods Pro\"}\n"
+        "{\"event\":\"connect_prompt\",\"name\":\"AirPods Pro\",\"battery\":null,\"product_id\":0,\"busy\":false}\n"
+    );
+}
+
+const FULL_CONNECT_PROMPT: &str = concat!(
+    r#"{"event":"connect_prompt","name":"AirPods Pro","#,
+    r#""battery":{"left":90,"right":null,"case":30,"headphone":null,"#,
+    r#""left_charging":false,"right_charging":false,"case_charging":true,"headphone_charging":false},"#,
+    r#""product_id":8231,"busy":true}"#
+);
+
+fn full_prompt_battery() -> Battery {
+    Battery {
+        left: Some(90),
+        case: Some(30),
+        case_charging: true,
+        ..Battery::default()
+    }
+}
+
+#[test]
+fn full_connect_prompt_round_trips() {
+    let ev = Event::ConnectPrompt {
+        name: "AirPods Pro".into(),
+        battery: Some(full_prompt_battery()),
+        product_id: 0x2027,
+        busy: true,
+    };
+    assert_eq!(to_line(&ev), format!("{FULL_CONNECT_PROMPT}\n"));
+    let Some(Event::ConnectPrompt {
+        name,
+        battery,
+        product_id,
+        busy,
+    }) = from_line::<Event>(FULL_CONNECT_PROMPT)
+    else {
+        panic!("not ConnectPrompt");
+    };
+    assert_eq!(name, "AirPods Pro");
+    assert_eq!(battery, Some(full_prompt_battery()));
+    assert_eq!(product_id, 0x2027);
+    assert!(busy);
+}
+
+#[test]
+fn connect_prompt_without_new_fields_parses() {
+    let Some(Event::ConnectPrompt {
+        name,
+        battery,
+        product_id,
+        busy,
+    }) = from_line::<Event>(r#"{"event":"connect_prompt","name":"AirPods Pro"}"#)
+    else {
+        panic!("old connect_prompt rejected");
+    };
+    assert_eq!(name, "AirPods Pro");
+    assert_eq!(battery, None);
+    assert_eq!(product_id, 0);
+    assert!(!busy);
+}
+
+#[test]
+fn ble_match_wire_names() {
+    for (m, name) in [
+        (BleMatch::None, "none"),
+        (BleMatch::Ambiguous, "ambiguous"),
+        (BleMatch::Likely, "likely"),
+        (BleMatch::Weak, "weak"),
+        (BleMatch::Bound, "bound"),
+    ] {
+        let json = format!("\"{name}\"");
+        assert_eq!(to_line(&m), format!("{json}\n"));
+        assert_eq!(from_line::<BleMatch>(&json), Some(m));
+    }
+}
+
+#[test]
+fn snapshot_without_driverless_fields_parses() {
+    let without = |field: &str| {
+        let old = FULL_STATE_EVENT.replace(field, "");
+        assert_ne!(old, FULL_STATE_EVENT, "{field} not in fixture");
+        from_line::<Snapshot>(&old)
+    };
+    assert_eq!(
+        without(r#","audio_connected":true"#),
+        Some(Snapshot {
+            audio_connected: false,
+            ..full_snapshot()
+        })
+    );
+    assert_eq!(
+        without(r#","ble_match":"bound""#),
+        Some(Snapshot {
+            ble_match: BleMatch::None,
+            ..full_snapshot()
+        })
+    );
+    assert_eq!(
+        without(r#","product_id":8231"#),
+        Some(Snapshot {
+            product_id: 0,
+            ..full_snapshot()
+        })
     );
 }
 
