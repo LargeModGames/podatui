@@ -494,3 +494,142 @@ fn longest_suffix_matching_prefix(data: &[u8], prefix: &[u8], start_index: usize
     }
     0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: HrSample = HrSample {
+        bpm: 72,
+        confidence: 0xA0,
+    };
+
+    fn payload(bpm: u8, confidence: u8, tail: [u8; 3]) -> Vec<u8> {
+        let mut p = vec![0u8; HEART_RATE_PAYLOAD_LENGTH];
+        p[HEART_RATE_BPM_OFFSET] = bpm;
+        p[HEART_RATE_CONFIDENCE_OFFSET] = confidence;
+        p[HEART_RATE_STATUS_TAIL_OFFSET..].copy_from_slice(&tail);
+        p
+    }
+
+    /// Header, then log type (field 2) and one command (field 5) holding service (1) and payload (3).
+    fn frame(log_type: u8, service: u8, payload: &[u8]) -> Vec<u8> {
+        let mut command = vec![0x08, service, 0x1A, payload.len() as u8];
+        command.extend_from_slice(payload);
+        let mut body = vec![0x10, log_type, 0x2A, command.len() as u8];
+        body.extend_from_slice(&command);
+        let mut f = RTBUDDY_FRAME_PREFIX.to_vec();
+        f.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        f.extend_from_slice(&body);
+        f
+    }
+
+    fn hr_frame(bpm: u8, confidence: u8) -> Vec<u8> {
+        frame(
+            1,
+            19,
+            &payload(bpm, confidence, KNOWN_HEART_RATE_STATUS_TAILS[0]),
+        )
+    }
+
+    fn decode(chunk: &[u8]) -> Vec<HrSample> {
+        RtBuddyHeartRateDecoder::new().feed(chunk)
+    }
+
+    #[test]
+    fn valid_frame_yields_sample() {
+        assert_eq!(hr_frame(72, 0xA0).len(), 38);
+        for log_type in LIVE_SENSOR_DATA_LOG_TYPES {
+            for service in HEART_RATE_REPORT_SERVICES {
+                for tail in KNOWN_HEART_RATE_STATUS_TAILS {
+                    let f = frame(log_type as u8, service as u8, &payload(72, 0xA0, tail));
+                    assert_eq!(decode(&f), vec![SAMPLE]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn two_frames_in_one_chunk() {
+        let mut data = hr_frame(72, 0xA0);
+        data.extend_from_slice(&hr_frame(90, 0xF0));
+        let second = HrSample {
+            bpm: 90,
+            confidence: 0xF0,
+        };
+        assert_eq!(decode(&data), vec![SAMPLE, second]);
+    }
+
+    #[test]
+    fn rejects_out_of_range_and_unlocked() {
+        assert_eq!(decode(&hr_frame(72, 0x7F)), vec![]);
+        assert_eq!(decode(&hr_frame(72, 0x80))[0].confidence, 0x80);
+        assert_eq!(decode(&hr_frame(29, 0xA0)), vec![]);
+        assert_eq!(decode(&hr_frame(30, 0xA0))[0].bpm, 30);
+        assert_eq!(decode(&hr_frame(220, 0xA0))[0].bpm, 220);
+        assert_eq!(decode(&hr_frame(221, 0xA0)), vec![]);
+    }
+
+    #[test]
+    fn rejects_wrong_log_type_service_tail_and_length() {
+        let p = payload(72, 0xA0, KNOWN_HEART_RATE_STATUS_TAILS[0]);
+        assert_eq!(decode(&frame(2, 19, &p)), vec![]);
+        assert_eq!(decode(&frame(1, 18, &p)), vec![]);
+        assert_eq!(
+            decode(&frame(1, 19, &payload(72, 0xA0, [0x10, 0x00, 0x01]))),
+            vec![]
+        );
+        assert_eq!(decode(&frame(1, 19, &p[..17])), vec![]);
+        let mut long = p.clone();
+        long.push(0);
+        assert_eq!(decode(&frame(1, 19, &long)), vec![]);
+    }
+
+    #[test]
+    fn reassembles_across_two_chunks_at_every_split() {
+        let f = hr_frame(72, 0xA0);
+        for i in 1..f.len() {
+            let mut d = RtBuddyHeartRateDecoder::new();
+            assert_eq!(d.feed(&f[..i]), vec![], "split {i}");
+            assert_eq!(d.feed(&f[i..]), vec![SAMPLE], "split {i}");
+        }
+    }
+
+    #[test]
+    fn reassembles_across_three_chunks() {
+        let f = hr_frame(72, 0xA0);
+        let mut d = RtBuddyHeartRateDecoder::new();
+        assert_eq!(d.feed(&f[..5]), vec![]);
+        assert_eq!(d.feed(&f[5..11]), vec![]);
+        assert_eq!(d.feed(&f[11..]), vec![SAMPLE]);
+        assert_eq!(d.feed(&[]), vec![]);
+    }
+
+    #[test]
+    fn skips_garbage_before_prefix() {
+        let mut data = vec![0xFF, 0x04, 0x00, 0x04, 0x00, 0x2E];
+        data.extend_from_slice(&hr_frame(72, 0xA0));
+        assert_eq!(decode(&data), vec![SAMPLE]);
+    }
+
+    #[test]
+    fn reset_drops_carry() {
+        let f = hr_frame(72, 0xA0);
+        let mut d = RtBuddyHeartRateDecoder::new();
+        assert_eq!(d.feed(&f[..20]), vec![]);
+        d.reset();
+        assert_eq!(d.feed(&f[20..]), vec![]);
+        assert_eq!(d.feed(&f), vec![SAMPLE]);
+    }
+
+    #[test]
+    fn contains_frame_prefix_both_ways() {
+        let f = hr_frame(72, 0xA0);
+        assert!(contains_frame_prefix(&f));
+        assert!(contains_frame_prefix(&[&[0xFF][..], &f].concat()));
+        assert!(contains_frame_prefix(&RTBUDDY_FRAME_PREFIX));
+        assert!(!contains_frame_prefix(&RTBUDDY_FRAME_PREFIX[..9]));
+        assert!(!contains_frame_prefix(&f[1..]));
+        assert!(!contains_frame_prefix(&[]));
+    }
+}
