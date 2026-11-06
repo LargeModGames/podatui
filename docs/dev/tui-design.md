@@ -32,7 +32,7 @@ Sections and their settings (AAP control ids from `docs/control_commands.md`):
 | General | battery bars for left, right, case; Noise Control (0x0D); Conversation Awareness (0x28); Personalized Volume (0x26) |
 | Noise Control | the four modes (0x0D); press-and-hold cycle (0x1A bitmask: Off 0x01, NC 0x02, Transparency 0x04, Adaptive 0x08); NC with one AirPod (0x1B); Adaptive Audio strength (0x2E); Conversation Awareness; Personalized Volume |
 | Controls | press speed (0x17); hold duration (0x18); swipe to adjust volume (0x25); swipe interval (0x23); automatic ear detection (0x0A); microphone (0x01); chime volume (0x1F) |
-| Health | heart rate monitoring (0x30); live heart rate (not wired yet); sleep detection (0x35) |
+| Health | heart rate monitoring (0x30); live heart rate (⏎ starts or stops it: sparkline of the last 12 readings plus bpm; 4 attempts of 12 s, then "no reading"); sleep detection (0x35) |
 | About | name, model, firmware, Bluetooth address |
 
 Row kinds: switch (0x01 on, 0x02 off), choice (segmented options), radio, checkbox, slider (0 to 100, steps of 5)

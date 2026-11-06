@@ -195,10 +195,36 @@ pub const COMPACT: [Group; 2] = [
 ];
 
 pub enum LinkEvent {
-    Connected { name: String, addr: String },
+    Connected {
+        name: String,
+        addr: String,
+    },
     Packet(Vec<u8>),
     Down(String),
+    Bpm(u16),
+    /// The heart-rate stream gave no reading after every retry.
+    HeartRateFailed,
 }
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum LinkCommand {
+    Send(Vec<u8>),
+    HeartRate(bool),
+}
+
+/// Live heart-rate reading, started from the Health section.
+#[derive(Default, PartialEq, Eq, Debug)]
+pub enum Heart {
+    #[default]
+    Off,
+    Starting,
+    /// Recent readings, oldest first.
+    Live(Vec<u16>),
+    Failed,
+}
+
+/// Readings kept for the sparkline.
+pub const HEART_HISTORY: usize = 12;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Focus {
@@ -208,6 +234,7 @@ pub enum Focus {
 
 pub struct App {
     pub device: Device,
+    pub heart: Heart,
     /// Why the link is down, shown while disconnected.
     pub status: String,
     pub section: usize,
@@ -221,6 +248,7 @@ impl Default for App {
     fn default() -> Self {
         App {
             device: Device::default(),
+            heart: Heart::Off,
             status: "looking for AirPods".into(),
             section: 0,
             focus: Focus::Content,
@@ -250,17 +278,31 @@ impl App {
                 self.device = Device::default();
                 self.device.name = Some(name);
                 self.device.addr = addr;
+                self.heart = Heart::Off;
             }
             LinkEvent::Packet(p) => self.device.apply(&p),
             LinkEvent::Down(why) => {
                 self.device.name = None;
                 self.status = why;
+                self.heart = Heart::Off;
             }
+            LinkEvent::Bpm(bpm) => {
+                let mut history = match std::mem::take(&mut self.heart) {
+                    Heart::Live(h) => h,
+                    _ => Vec::new(),
+                };
+                history.push(bpm);
+                if history.len() > HEART_HISTORY {
+                    history.remove(0);
+                }
+                self.heart = Heart::Live(history);
+            }
+            LinkEvent::HeartRateFailed => self.heart = Heart::Failed,
         }
     }
 
-    /// Handle a key press; returns the AAP command to send, if any.
-    pub fn key(&mut self, code: KeyCode) -> Option<Vec<u8>> {
+    /// Handle a key press; returns what to tell the link, if anything.
+    pub fn key(&mut self, code: KeyCode) -> Option<LinkCommand> {
         let content = self.compact || self.focus == Focus::Content;
         let rows = self.rows().count();
         match code {
@@ -301,10 +343,15 @@ impl App {
     }
 
     /// Act on the cursor row: `step` 0 is Enter, +1/-1 are right/left.
-    fn activate(&mut self, step: i32) -> Option<Vec<u8>> {
+    fn activate(&mut self, step: i32) -> Option<LinkCommand> {
         let row = self.rows().nth(self.cursor)?;
         let d = &self.device;
         let cmd = match row.kind {
+            Kind::Info(Info::HeartRate) if step == 0 && d.connected() => {
+                let on = matches!(self.heart, Heart::Off | Heart::Failed);
+                self.heart = if on { Heart::Starting } else { Heart::Off };
+                return Some(LinkCommand::HeartRate(on));
+            }
             Kind::Switch(id) if step == 0 => aap::feature_command(id, d.control(id) != Some(1)),
             Kind::Radio(v) if step == 0 => aap::anc_command(v),
             Kind::Check(bit) if step == 0 => {
@@ -328,12 +375,12 @@ impl App {
     }
 
     /// The AirPods do not echo control changes, so apply the command locally as it is sent.
-    fn send(&mut self, cmd: Vec<u8>) -> Option<Vec<u8>> {
+    fn send(&mut self, cmd: Vec<u8>) -> Option<LinkCommand> {
         if !self.device.connected() {
             return None;
         }
         self.device.apply(&cmd);
-        Some(cmd)
+        Some(LinkCommand::Send(cmd))
     }
 }
 
@@ -350,6 +397,10 @@ mod tests {
         app
     }
 
+    fn sent(cmd: &[u8]) -> Option<LinkCommand> {
+        Some(LinkCommand::Send(cmd.to_vec()))
+    }
+
     fn report(app: &mut App, id: u8, value: u8) {
         app.on_link(LinkEvent::Packet(vec![
             0x04, 0x00, 0x04, 0x00, 0x09, 0x00, id, value, 0, 0, 0,
@@ -363,7 +414,7 @@ mod tests {
         app.cursor = 1;
         assert_eq!(
             app.key(KeyCode::Enter),
-            Some(aap::feature_command(0x28, false).to_vec())
+            sent(&aap::feature_command(0x28, false))
         );
         assert_eq!(app.device.control(0x28), Some(0x02));
     }
@@ -371,22 +422,16 @@ mod tests {
     #[test]
     fn number_keys_set_the_noise_mode() {
         let mut app = connected();
-        assert_eq!(
-            app.key(KeyCode::Char('4')),
-            Some(aap::anc_command(2).to_vec())
-        );
-        assert_eq!(
-            app.key(KeyCode::Char('2')),
-            Some(aap::anc_command(3).to_vec())
-        );
+        assert_eq!(app.key(KeyCode::Char('4')), sent(&aap::anc_command(2)));
+        assert_eq!(app.key(KeyCode::Char('2')), sent(&aap::anc_command(3)));
     }
 
     #[test]
     fn choice_steps_through_its_options_both_ways() {
         let mut app = connected();
         report(&mut app, NOISE, 4);
-        assert_eq!(app.key(KeyCode::Right), Some(aap::anc_command(2).to_vec()));
-        assert_eq!(app.key(KeyCode::Left), Some(aap::anc_command(4).to_vec()));
+        assert_eq!(app.key(KeyCode::Right), sent(&aap::anc_command(2)));
+        assert_eq!(app.key(KeyCode::Left), sent(&aap::anc_command(4)));
     }
 
     #[test]
@@ -397,7 +442,7 @@ mod tests {
         app.cursor = 4;
         assert_eq!(
             app.key(KeyCode::Enter),
-            Some(aap::control_command(CYCLE, 0x0F).to_vec())
+            sent(&aap::control_command(CYCLE, 0x0F))
         );
     }
 
@@ -409,11 +454,11 @@ mod tests {
         app.cursor = 9;
         assert_eq!(
             app.key(KeyCode::Right),
-            Some(aap::control_command(0x2E, 100).to_vec())
+            sent(&aap::control_command(0x2E, 100))
         );
         assert_eq!(
             app.key(KeyCode::Left),
-            Some(aap::control_command(0x2E, 95).to_vec())
+            sent(&aap::control_command(0x2E, 95))
         );
     }
 
@@ -434,5 +479,31 @@ mod tests {
         assert_eq!(app.key(KeyCode::Char('1')), None);
         app.key(KeyCode::Char('q'));
         assert!(app.quit);
+    }
+
+    #[test]
+    fn heart_rate_row_starts_and_stops_the_stream() {
+        let mut app = connected();
+        app.section = 3;
+        app.cursor = 1;
+        assert_eq!(app.key(KeyCode::Enter), Some(LinkCommand::HeartRate(true)));
+        assert_eq!(app.heart, Heart::Starting);
+        assert_eq!(app.key(KeyCode::Enter), Some(LinkCommand::HeartRate(false)));
+        assert_eq!(app.heart, Heart::Off);
+    }
+
+    #[test]
+    fn readings_keep_a_short_history() {
+        let mut app = connected();
+        for bpm in 60..60 + HEART_HISTORY as u16 + 3 {
+            app.on_link(LinkEvent::Bpm(bpm));
+        }
+        let Heart::Live(h) = &app.heart else {
+            panic!("not live: {:?}", app.heart)
+        };
+        assert_eq!(h.len(), HEART_HISTORY);
+        assert_eq!(h.last(), Some(&(60 + HEART_HISTORY as u16 + 2)));
+        app.on_link(LinkEvent::Down("gone".into()));
+        assert_eq!(app.heart, Heart::Off);
     }
 }

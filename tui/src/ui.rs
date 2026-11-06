@@ -1,7 +1,7 @@
 //! Drawing: the full-screen System Settings layout, or the compact card on small terminals.
 //! Layout, colours and icons follow docs/dev/tui-design.md.
 
-use crate::app::{App, Focus, Info, Kind, Row, NOISE, SECTIONS};
+use crate::app::{App, Focus, Heart, Info, Kind, Row, NOISE, SECTIONS};
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -125,9 +125,28 @@ fn info(app: &App, which: Info) -> String {
         Info::Model => d.model.clone(),
         Info::Firmware => d.firmware.clone(),
         Info::Address => d.connected().then(|| d.addr.clone()),
-        Info::HeartRate => None,
+        Info::HeartRate => d.connected().then(|| match &app.heart {
+            Heart::Off => "⏎ to measure".into(),
+            Heart::Starting => "measuring…".into(),
+            Heart::Live(h) => format!("{}  {} bpm", sparkline(h), h.last().unwrap_or(&0)),
+            Heart::Failed => "no reading, ⏎ to retry".into(),
+        }),
     };
     value.unwrap_or_else(|| "--".into())
+}
+
+/// Readings as block characters scaled between their own minimum and maximum.
+fn sparkline(readings: &[u16]) -> String {
+    const BARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let lo = readings.iter().copied().min().unwrap_or(0);
+    let hi = readings.iter().copied().max().unwrap_or(0);
+    readings
+        .iter()
+        .map(|&r| match hi - lo {
+            0 => BARS[3],
+            span => BARS[((r - lo) as usize * 7 + span as usize / 2) / span as usize],
+        })
+        .collect()
 }
 
 /// One setting row, padded to `width`: mark, icon and label on the left, control on the right.
@@ -193,7 +212,11 @@ fn row_line(app: &App, row: &Row, width: usize, cursor: bool, bg: Color) -> Line
             }
             None => unknown(),
         },
-        Kind::Info(which) => vec![Span::styled(info(app, which), fg(accent(SECONDARY)))],
+        Kind::Info(which) => {
+            let live = matches!((which, &app.heart), (Info::HeartRate, Heart::Live(_)));
+            let color = accent(if live && on { RED } else { SECONDARY });
+            vec![Span::styled(info(app, which), fg(color))]
+        }
         Kind::Radio(_) | Kind::Check(_) => Vec::new(),
     };
 
@@ -477,5 +500,16 @@ mod tests {
         let s = screen(&app, 120, 34);
         assert!(s.contains("Not connected"), "{s}");
         assert!(s.contains("no connected AirPods found"), "{s}");
+    }
+
+    #[test]
+    fn health_shows_live_heart_rate_with_a_sparkline() {
+        let mut app = connected();
+        app.section = 3;
+        for bpm in [64, 70, 72] {
+            app.on_link(LinkEvent::Bpm(bpm));
+        }
+        let s = screen(&app, 120, 34);
+        assert!(s.contains("▁▆█  72 bpm"), "{s}");
     }
 }
