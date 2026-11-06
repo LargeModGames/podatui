@@ -2,3 +2,4 @@
 
 pub mod aap;
 pub mod hr;
+pub mod proximity;
