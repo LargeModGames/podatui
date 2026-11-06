@@ -9,7 +9,7 @@
 // No longer called — kept for a quick revert if the stereo-restore ever proves
 // necessary; see the note in set_mic(). (Crate-level allow(dead_code) covers it.)
 mod a2dp;
-mod aap;
+use podatui_core::aap;
 mod bt;
 mod devnode;
 mod driver;

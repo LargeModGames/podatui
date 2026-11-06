@@ -1,0 +1,5 @@
+[package]
+name = "podatui-core"
+version = "0.1.0"
+edition = "2021"
+description = "OS-independent AAP protocol and policy shared by the podatui daemons."

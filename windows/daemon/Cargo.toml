@@ -5,6 +5,7 @@ edition = "2021"
 description = "podatui Windows daemon — owns the AAP driver + hi-res mic, serves the tray/app over IPC."
 
 [dependencies]
+podatui-core = { path = "../../core" }
 podatui-ipc = { path = "../ipc" }
 serde_json = "1"
 # Heart-rate tracking DB (hrdb.rs). `bundled` compiles SQLite in, so neither the

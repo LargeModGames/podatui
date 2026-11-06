@@ -108,6 +108,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
+name = "podatui-core"
+version = "0.1.0"
+
+[[package]]
 name = "podatui-ipc"
 version = "0.1.0"
 dependencies = [
@@ -120,6 +124,7 @@ name = "podatuid"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "podatui-core",
  "podatui-ipc",
  "rusqlite",
  "serde_json",
