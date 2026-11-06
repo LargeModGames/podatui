@@ -209,15 +209,15 @@ struct Ctx {
     mode: Mode,
 }
 
-/// Whether the PodatuiAAP driver is there. Decided once at startup.
+/// Whether the PodatuiAAP driver is installed. Decided once at startup.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Mode {
     Driver,
     Driverless,
 }
 
-fn mode(interface_present: bool) -> Mode {
-    if interface_present {
+fn mode(driver_installed: bool) -> Mode {
+    if driver_installed {
         Mode::Driver
     } else {
         Mode::Driverless
@@ -2193,7 +2193,7 @@ fn main() {
         let _ = std::fs::create_dir_all(format!("{la}\\podatui"));
     }
     log("=== podatuid start ===");
-    let mode = mode(driver::interface_present());
+    let mode = mode(driver::installed());
     log(match mode {
         Mode::Driver => "mode: driver",
         Mode::Driverless => "mode: driverless",
@@ -2394,7 +2394,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn mode_follows_the_driver_interface() {
+    fn mode_follows_the_installed_driver() {
         assert_eq!(mode(true), Mode::Driver);
         assert_eq!(mode(false), Mode::Driverless);
     }

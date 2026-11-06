@@ -155,30 +155,23 @@ impl Driver {
     }
 }
 
-/// The PodatuiAAP device interface is present, i.e. the driver is installed and bound.
-pub fn interface_present() -> bool {
+/// The PodatuiAAP service is installed, even while its devnode is absent or in Code 38.
+pub fn installed() -> bool {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
+    };
+    let path: Vec<u16> = r"SYSTEM\CurrentControlSet\Services\PodatuiAAP"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut key: HKEY = ptr::null_mut();
     unsafe {
-        let devinfo = SetupDiGetClassDevsW(
-            &GUID_DEVINTERFACE_PODATUIAAP,
-            ptr::null(),
-            ptr::null_mut(),
-            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
-        );
-        if devinfo == INVALID_HANDLE_VALUE as isize {
+        if RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.as_ptr(), 0, KEY_READ, &mut key) != 0 {
             return false;
         }
-        let mut ifdata: SP_DEVICE_INTERFACE_DATA = std::mem::zeroed();
-        ifdata.cbSize = std::mem::size_of::<SP_DEVICE_INTERFACE_DATA>() as u32;
-        let found = SetupDiEnumDeviceInterfaces(
-            devinfo,
-            ptr::null(),
-            &GUID_DEVINTERFACE_PODATUIAAP,
-            0,
-            &mut ifdata,
-        ) != 0;
-        SetupDiDestroyDeviceInfoList(devinfo);
-        found
+        RegCloseKey(key);
     }
+    true
 }
 
 fn open_driver() -> io::Result<HANDLE> {
