@@ -1726,7 +1726,8 @@ fn run_receiver(ctx: Ctx) {
                             }
                         }
                         // Case low battery (separate, quieter threshold).
-                        if let Some(cl) = { ctx.state.lock().unwrap().battery.case } {
+                        let case = ctx.state.lock().unwrap().battery.case;
+                        if let Some(cl) = case {
                             if cl <= 15 && !case_low_warned {
                                 ctx.overlay(&format!("Case battery low — {cl}%"));
                                 case_low_warned = true;
