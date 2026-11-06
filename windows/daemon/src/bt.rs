@@ -387,3 +387,23 @@ pub fn find_airpods() -> Option<(u64, String)> {
     }
     by_service.or(by_name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::kind_from_cod;
+
+    #[test]
+    fn kind_from_cod_table() {
+        assert_eq!(kind_from_cod(0x00_010C), "laptop");
+        assert_eq!(kind_from_cod(0x00_0110), "laptop");
+        assert_eq!(kind_from_cod(0x00_0104), "pc");
+        assert_eq!(kind_from_cod(0x00_011C), "pc");
+        assert_eq!(kind_from_cod(0x7A_020C), "phone");
+        assert_eq!(kind_from_cod(0x24_0404), "audio");
+        assert_eq!(kind_from_cod(0x00_0708), "watch");
+        assert_eq!(kind_from_cod(0x00_0704), "unknown");
+        assert_eq!(kind_from_cod(0x00_0000), "unknown");
+        assert_eq!(kind_from_cod(0x00_1F00), "unknown");
+        assert_eq!(kind_from_cod(0xFF_E20C), "phone");
+    }
+}

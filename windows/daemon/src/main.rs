@@ -2334,8 +2334,63 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::utc_timestamp;
+    use super::{aap, battery_text, frame, is_setup, utc_timestamp};
+    use podatui_ipc::Battery;
     use std::time::Duration;
+
+    #[test]
+    fn frame_prefixes_u16_le_length() {
+        assert_eq!(frame(&[]), [0x00, 0x00]);
+        assert_eq!(frame(&[0x04, 0x00]), [0x02, 0x00, 0x04, 0x00]);
+        let long = vec![0xAB; 300];
+        let f = frame(&long);
+        assert_eq!(f.len(), 302);
+        assert_eq!(&f[..2], &[0x2C, 0x01]);
+        assert_eq!(&f[2..], long.as_slice());
+    }
+
+    #[test]
+    fn is_setup_matches_only_the_three_setup_packets() {
+        assert!(is_setup(&aap::HANDSHAKE));
+        assert!(is_setup(&aap::SET_FEATURES));
+        assert!(is_setup(&aap::REQUEST_NOTIFS));
+        assert!(!is_setup(&[]));
+        assert!(!is_setup(&aap::HANDSHAKE[..15]));
+        assert!(!is_setup(
+            &[aap::REQUEST_NOTIFS.as_slice(), &[0x00]].concat()
+        ));
+        assert!(!is_setup(&aap::anc_command(2)));
+    }
+
+    #[test]
+    fn battery_text_table() {
+        assert_eq!(battery_text(&Battery::default(), false), "Disconnected");
+        let full = Battery {
+            left: Some(80),
+            right: Some(75),
+            case: Some(100),
+            ..Battery::default()
+        };
+        assert_eq!(battery_text(&full, false), "Disconnected");
+        assert_eq!(
+            battery_text(&full, true),
+            "Left 80%   Right 75%   Case 100%"
+        );
+        assert_eq!(
+            battery_text(&Battery::default(), true),
+            "Left \u{2014}   Right \u{2014}   Case \u{2014}"
+        );
+        let partial = Battery {
+            left: Some(0),
+            headphone: Some(50),
+            left_charging: true,
+            ..Battery::default()
+        };
+        assert_eq!(
+            battery_text(&partial, true),
+            "Left 0%   Right \u{2014}   Case \u{2014}"
+        );
+    }
 
     #[test]
     fn utc_timestamp_is_iso8601() {

@@ -183,3 +183,80 @@ fn writer(conn: Connection, rx: mpsc::Receiver<Event>, log: fn(&str)) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{format_mac, init, writer, Event};
+    use rusqlite::{Connection, OpenFlags};
+    use std::sync::mpsc;
+
+    #[test]
+    fn format_mac_is_lowercase_colon_separated_48_bits() {
+        assert_eq!(format_mac(0), "00:00:00:00:00:00");
+        assert_eq!(format_mac(0x0011_2233_4455), "00:11:22:33:44:55");
+        assert_eq!(format_mac(0xAABB_CCDD_EEFF), "aa:bb:cc:dd:ee:ff");
+        assert_eq!(format_mac(0xFFFF_0000_0000_0001), "00:00:00:00:00:01");
+    }
+
+    #[test]
+    fn writer_opens_switches_and_ends_sessions() {
+        let uri = "file:hrdb_writer_test?mode=memory&cache=shared";
+        let flags = OpenFlags::default() | OpenFlags::SQLITE_OPEN_URI;
+        let keep = Connection::open_with_flags(uri, flags).unwrap();
+        let conn = Connection::open_with_flags(uri, flags).unwrap();
+        init(&conn).unwrap();
+
+        let (a, b) = (0xAABB_CCDD_EEFF, 0x0011_2233_4455);
+        let sample = |device, ts_ms, bpm| Event::Sample {
+            device,
+            ts_ms,
+            bpm,
+            confidence: 200,
+        };
+        let (tx, rx) = mpsc::channel();
+        for ev in [
+            sample(a, 1000, 60),
+            sample(a, 2000, 61),
+            sample(b, 3000, 70),
+            Event::EndSession { ts_ms: 4000 },
+            Event::EndSession { ts_ms: 4500 },
+            sample(a, 5000, 80),
+        ] {
+            tx.send(ev).unwrap();
+        }
+        drop(tx);
+        writer(conn, rx, |m| panic!("{m}"));
+
+        let sessions: Vec<(i64, String, i64, Option<i64>)> = keep
+            .prepare("SELECT id, device, started_at, ended_at FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            sessions,
+            [
+                (1, "aa:bb:cc:dd:ee:ff".into(), 1000, Some(3000)),
+                (2, "00:11:22:33:44:55".into(), 3000, Some(4000)),
+                (3, "aa:bb:cc:dd:ee:ff".into(), 5000, None),
+            ]
+        );
+        let samples: Vec<(i64, i64, i64, i64)> = keep
+            .prepare("SELECT session_id, ts, bpm, confidence FROM samples ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            samples,
+            [
+                (1, 1000, 60, 200),
+                (1, 2000, 61, 200),
+                (2, 3000, 70, 200),
+                (3, 5000, 80, 200),
+            ]
+        );
+    }
+}

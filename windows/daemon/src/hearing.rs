@@ -253,3 +253,32 @@ pub fn apply(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{att_read_req, att_write_pdu, put_f32, H_CCCD, H_SETTINGS};
+
+    #[test]
+    fn att_pdus_are_opcode_then_le_handle() {
+        assert_eq!(att_read_req(H_SETTINGS), [0x0A, 0x2A, 0x00]);
+        assert_eq!(att_read_req(0x1234), [0x0A, 0x34, 0x12]);
+        assert_eq!(
+            att_write_pdu(H_CCCD, &[0x01, 0x00]),
+            [0x12, 0x2B, 0x00, 0x01, 0x00]
+        );
+        assert_eq!(att_write_pdu(0xABCD, &[]), [0x12, 0xCD, 0xAB]);
+    }
+
+    #[test]
+    fn put_f32_writes_le_and_skips_out_of_range() {
+        let mut b = [0u8; 8];
+        put_f32(&mut b, 4, 1.0);
+        assert_eq!(b, [0, 0, 0, 0, 0x00, 0x00, 0x80, 0x3F]);
+        put_f32(&mut b, 0, -0.5);
+        assert_eq!(&b[..4], &[0x00, 0x00, 0x00, 0xBF]);
+        let before = b;
+        put_f32(&mut b, 5, 2.0);
+        put_f32(&mut b, 8, 2.0);
+        assert_eq!(b, before);
+    }
+}
