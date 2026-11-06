@@ -1,0 +1,10 @@
+[package]
+name = "podatuid"
+version = "0.1.0"
+edition = "2021"
+description = "podatui daemon for Linux: talks AAP to AirPods over a BlueZ L2CAP socket."
+
+[dependencies]
+podatui-core = { path = "../../core" }
+bluer = { version = "0.17", features = ["bluetoothd", "l2cap"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
