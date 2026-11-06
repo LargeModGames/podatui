@@ -155,6 +155,32 @@ impl Driver {
     }
 }
 
+/// The PodatuiAAP device interface is present, i.e. the driver is installed and bound.
+pub fn interface_present() -> bool {
+    unsafe {
+        let devinfo = SetupDiGetClassDevsW(
+            &GUID_DEVINTERFACE_PODATUIAAP,
+            ptr::null(),
+            ptr::null_mut(),
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
+        );
+        if devinfo == INVALID_HANDLE_VALUE as isize {
+            return false;
+        }
+        let mut ifdata: SP_DEVICE_INTERFACE_DATA = std::mem::zeroed();
+        ifdata.cbSize = std::mem::size_of::<SP_DEVICE_INTERFACE_DATA>() as u32;
+        let found = SetupDiEnumDeviceInterfaces(
+            devinfo,
+            ptr::null(),
+            &GUID_DEVINTERFACE_PODATUIAAP,
+            0,
+            &mut ifdata,
+        ) != 0;
+        SetupDiDestroyDeviceInfoList(devinfo);
+        found
+    }
+}
+
 fn open_driver() -> io::Result<HANDLE> {
     unsafe {
         let devinfo = SetupDiGetClassDevsW(

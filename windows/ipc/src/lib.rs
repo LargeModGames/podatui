@@ -94,6 +94,10 @@ pub struct Snapshot {
     /// the buds. Empty until the first 0x2E arrives. (serde default: older snapshots.)
     #[serde(default)]
     pub multipoint: Vec<ConnectedDevice>,
+    /// The daemon runs without the AAP driver: only audio-level features work.
+    /// (serde default: older snapshots.)
+    #[serde(default)]
+    pub driverless: bool,
 }
 
 /// One host connected to the AirPods, as reported by the buds themselves.

@@ -9,7 +9,7 @@ const DEFAULT_SNAPSHOT: &str = concat!(
     r#""anc":0,"mic_recording":false,"mic_available":false,"auto_mode":false,"#,
     r#""conversational_awareness":false,"adaptive_volume":false,"allow_off":false,"#,
     r#""volume":0,"muted":false,"heart_rate":null,"model":"","firmware":"","serial":"","#,
-    r#""multipoint":[]}"#
+    r#""multipoint":[],"driverless":false}"#
 );
 
 const FULL_STATE_EVENT: &str = concat!(
@@ -20,7 +20,8 @@ const FULL_STATE_EVENT: &str = concat!(
     r#""conversational_awareness":true,"adaptive_volume":false,"allow_off":true,"#,
     r#""volume":55,"muted":false,"heart_rate":72,"model":"A3063","firmware":"8A356","serial":"ABC123","#,
     r#""multipoint":[{"address":"aa:bb:cc:dd:ee:ff","is_this_pc":true,"name":"This PC","kind":"pc"},"#,
-    r#"{"address":"11:22:33:44:55:66","is_this_pc":false,"name":"Unknown device","kind":"phone"}]}"#
+    r#"{"address":"11:22:33:44:55:66","is_this_pc":false,"name":"Unknown device","kind":"phone"}],"#,
+    r#""driverless":true}"#
 );
 
 fn full_snapshot() -> Snapshot {
@@ -65,6 +66,7 @@ fn full_snapshot() -> Snapshot {
                 kind: "phone".into(),
             },
         ],
+        driverless: true,
     }
 }
 
@@ -306,6 +308,14 @@ fn snapshot_without_defaulted_fields_parses() {
         ..Snapshot::default()
     };
     assert_eq!(from_line::<Snapshot>(old), Some(expected));
+}
+
+#[test]
+fn snapshot_without_driverless_parses_as_driver_mode() {
+    let old = DEFAULT_SNAPSHOT.replace(r#","driverless":false"#, "");
+    assert!(!old.contains("driverless"));
+    let snap = from_line::<Snapshot>(&old).expect("old snapshot rejected");
+    assert!(!snap.driverless);
 }
 
 #[test]

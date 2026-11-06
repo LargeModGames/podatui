@@ -26,7 +26,7 @@ mod rename;
 mod volume;
 
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -204,10 +204,44 @@ struct Ctx {
     /// second, and that churn is exactly what leaves the devnode in Code 38.
     last_repair: Arc<Mutex<Option<Instant>>>,
     dev_name: Arc<Mutex<String>>,
-    mac: u64,
+    /// The paired AirPods' address, 0 until one is found.
+    mac: Arc<AtomicU64>,
+    mode: Mode,
+}
+
+/// Whether the PodatuiAAP driver is there. Decided once at startup.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Mode {
+    Driver,
+    Driverless,
+}
+
+fn mode(interface_present: bool) -> Mode {
+    if interface_present {
+        Mode::Driver
+    } else {
+        Mode::Driverless
+    }
+}
+
+/// Commands that only work over the AAP driver.
+fn needs_driver(cmd: &Command) -> bool {
+    matches!(
+        cmd,
+        Command::SetAnc { .. }
+            | Command::SetFeature { .. }
+            | Command::SetControl { .. }
+            | Command::SetHeartRate { .. }
+            | Command::SetHearingAid { .. }
+            | Command::SetName { .. }
+    )
 }
 
 impl Ctx {
+    fn mac(&self) -> u64 {
+        self.mac.load(Ordering::Relaxed)
+    }
+
     /// Queue one NDJSON event for every client (never blocks — each client's
     /// writer thread drains its own queue). Drops clients whose writer has gone.
     fn send_event(&self, ev: &Event) {
@@ -716,7 +750,7 @@ fn spawn_reclaim(ctx: &Ctx, tier: Tier) {
                 log("reclaim: host dropped to tier 3/background — standing down");
                 break;
             }
-            if bt::is_connected(ctx.mac) {
+            if bt::is_connected(ctx.mac()) {
                 // The link is back. The rebuild itself is done off the handshake
                 // (see `audio_rebuild_pending`), so that it happens on EVERY
                 // recovery — including the ones where nothing was playing at the
@@ -1004,6 +1038,14 @@ fn hr_retry_campaign(ctx: &Ctx) -> HrOutcome {
 
 fn apply_command(ctx: &Ctx, cmd: Command) {
     log(&format!("cmd received: {cmd:?}"));
+    let cmd = match cmd {
+        Command::RepairConnection if ctx.mode == Mode::Driverless => Command::Connect,
+        cmd => cmd,
+    };
+    if ctx.mode == Mode::Driverless && needs_driver(&cmd) {
+        log("cmd: ignored, no AAP driver (driverless mode)");
+        return;
+    }
     match cmd {
         Command::Hello { .. } | Command::GetState => ctx.push_state(),
         Command::SetAnc { mode } => {
@@ -1117,7 +1159,7 @@ fn apply_command(ctx: &Ctx, cmd: Command) {
             // to (re)connect the audio in case the device was BT-disconnected.
             ctx.connect_requested.store(true, Ordering::Relaxed);
             ctx.user_disconnected.store(false, Ordering::Relaxed);
-            audio_request(ctx.mac, true, "user");
+            audio_request(ctx.mac(), true, "user");
         }
         Command::RebuildAudio => {
             // Deliberately does NOT touch the AAP session: in the failure this
@@ -1125,7 +1167,7 @@ fn apply_command(ctx: &Ctx, cmd: Command) {
             // both useless and disruptive. Only the audio services are toggled.
             log("cmd: rebuild audio route (user)");
             ctx.overlay("Rebuilding the audio route…");
-            let mac = ctx.mac;
+            let mac = ctx.mac();
             thread::spawn(move || force_audio_rebuild(mac));
         }
         Command::RepairConnection => {
@@ -1150,7 +1192,7 @@ fn apply_command(ctx: &Ctx, cmd: Command) {
             ctx.connect_requested.store(true, Ordering::Relaxed);
             ctx.user_disconnected.store(false, Ordering::Relaxed);
             ctx.wants_reconnect.store(true, Ordering::Relaxed);
-            audio_request(ctx.mac, true, "repair");
+            audio_request(ctx.mac(), true, "repair");
         }
         Command::Disconnect => {
             // Real disconnect: drop the control session AND ask the OS to
@@ -1163,7 +1205,7 @@ fn apply_command(ctx: &Ctx, cmd: Command) {
             *ctx.driver_cell.lock().unwrap() = None;
             ctx.push_state();
             ctx.overlay("Disconnected");
-            audio_request(ctx.mac, false, "user");
+            audio_request(ctx.mac(), false, "user");
         }
         Command::SetName { name } => {
             if !name.is_empty() && name.len() <= 64 {
@@ -1251,7 +1293,7 @@ impl MicStats {
 /// The AAP session: keep the link up, decode the mic, track battery/ANC/ear
 /// detection, and broadcast state + overlay events. (Ported from the tray.)
 fn run_receiver(ctx: Ctx) {
-    let mac = ctx.mac;
+    let mac = ctx.mac();
     log("run_receiver: entered");
     let mut buf = [0u8; 8192];
     // Uplink timing, logged every 30 s while the mic is on: the virtual mic's ring
@@ -1566,7 +1608,7 @@ fn run_receiver(ctx: Ctx) {
                             ctx.hr_got_sample.store(true, Ordering::Relaxed);
                         }
                         for sample in &samples {
-                            ctx.hr_db.sample(ctx.mac, *sample);
+                            ctx.hr_db.sample(ctx.mac(), *sample);
                         }
                         if let Some(bpm) = samples.into_iter().last().map(|s| s.bpm) {
                             let changed = {
@@ -2119,6 +2161,19 @@ fn poll_mic(ctx: Ctx) {
     }
 }
 
+/// Pick up AirPods paired while the daemon runs.
+fn poll_pairing(ctx: Ctx) {
+    while ctx.mac() == 0 {
+        thread::sleep(Duration::from_secs(30));
+        if let Some((mac, name)) = bt::find_airpods() {
+            log(&format!("find_airpods: mac={mac:#x} name='{name}'"));
+            ctx.mac.store(mac, Ordering::Relaxed);
+            *ctx.dev_name.lock().unwrap() = name;
+            ctx.push_state();
+        }
+    }
+}
+
 fn main() {
     if std::env::args().any(|a| a == "--probe") {
         return probe::run();
@@ -2138,6 +2193,11 @@ fn main() {
         let _ = std::fs::create_dir_all(format!("{la}\\podatui"));
     }
     log("=== podatuid start ===");
+    let mode = mode(driver::interface_present());
+    log(match mode {
+        Mode::Driver => "mode: driver",
+        Mode::Driverless => "mode: driverless",
+    });
     let (mac, dev_name) = match bt::find_airpods() {
         Some((m, n)) => (m, n),
         None => (0, "AirPods".to_string()),
@@ -2152,6 +2212,7 @@ fn main() {
             dev_name: dev_name.clone(),
             auto_mode: true,
             mic_available: pipe.is_open(),
+            driverless: mode == Mode::Driverless,
             ..Default::default()
         })),
         clients: Arc::new(Mutex::new(Vec::new())),
@@ -2177,11 +2238,12 @@ fn main() {
         last_reclaim: Arc::new(Mutex::new(None)),
         last_repair: Arc::new(Mutex::new(None)),
         dev_name: Arc::new(Mutex::new(dev_name.clone())),
-        mac,
+        mac: Arc::new(AtomicU64::new(mac)),
+        mode,
     };
 
     // Name the virtual mic after the connected device (elevated task, no UAC).
-    if mac != 0 {
+    if mode == Mode::Driver && mac != 0 {
         rename::apply(&dev_name);
     }
 
@@ -2210,7 +2272,7 @@ fn main() {
     // prompt. Instead edge-trigger: fire once, then stay quiet until the buds have
     // been ABSENT (no advertisement for a while — cased or out of range) and return,
     // which is the natural "ask again on the next case-open" behaviour.
-    if mac != 0 {
+    if mode == Mode::Driver && mac != 0 {
         let c = ctx.clone();
         let c_scan = ctx.clone();
         // (prompted_this_visit, last_advertisement_seen)
@@ -2242,7 +2304,7 @@ fn main() {
                     // connect_requested; also nudge the OS audio up in case the
                     // classic link is down.
                     c.connect_requested.store(true, Ordering::Relaxed);
-                    audio_request(c.mac, true, "auto");
+                    audio_request(c.mac(), true, "auto");
                     log("ble: AirPods nearby → auto-connecting");
                 },
                 // Only scan while idle (disconnected) — no BLE radio during audio.
@@ -2253,7 +2315,7 @@ fn main() {
     }
 
     // AAP session + auto-activate poll (only if we have a paired device).
-    if mac != 0 {
+    if mode == Mode::Driver && mac != 0 {
         {
             let c = ctx.clone();
             thread::spawn(move || run_receiver(c));
@@ -2262,6 +2324,10 @@ fn main() {
             let c = ctx.clone();
             thread::spawn(move || poll_mic(c));
         }
+    }
+    if mode == Mode::Driverless && mac == 0 {
+        let c = ctx.clone();
+        thread::spawn(move || poll_pairing(c));
     }
     // Volume poller: keep the Snapshot's volume/mute fresh (the daemon owns
     // volume) so the tray renders it — runs regardless of a paired device.
@@ -2323,9 +2389,49 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{aap, battery_text, frame, is_setup, utc_timestamp};
-    use podatui_ipc::Battery;
+    use super::{aap, battery_text, frame, is_setup, mode, needs_driver, utc_timestamp, Mode};
+    use podatui_ipc::{Battery, Command};
     use std::time::Duration;
+
+    #[test]
+    fn mode_follows_the_driver_interface() {
+        assert_eq!(mode(true), Mode::Driver);
+        assert_eq!(mode(false), Mode::Driverless);
+    }
+
+    #[test]
+    fn only_aap_commands_need_the_driver() {
+        for cmd in [
+            Command::SetAnc { mode: 2 },
+            Command::SetFeature {
+                feature: 0x28,
+                on: true,
+            },
+            Command::SetControl {
+                id: 0x2E,
+                value: 50,
+            },
+            Command::SetHeartRate { on: true },
+            Command::SetName { name: "x".into() },
+        ] {
+            assert!(needs_driver(&cmd), "{cmd:?}");
+        }
+        for cmd in [
+            Command::Connect,
+            Command::Disconnect,
+            Command::RebuildAudio,
+            Command::RepairConnection,
+            Command::StepVolume { delta: 5 },
+            Command::ToggleMute,
+            Command::GetState,
+            Command::SetMicMode {
+                auto: true,
+                manual: false,
+            },
+        ] {
+            assert!(!needs_driver(&cmd), "{cmd:?}");
+        }
+    }
 
     #[test]
     fn frame_prefixes_u16_le_length() {
