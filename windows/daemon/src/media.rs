@@ -38,12 +38,12 @@ pub fn is_playing() -> bool {
 
 /// Pause the current media session. Returns true if the control was accepted.
 pub fn pause() -> bool {
-    (|| -> windows::core::Result<bool> { Ok(current_session()?.TryPauseAsync()?.get()?) })()
+    (|| -> windows::core::Result<bool> { current_session()?.TryPauseAsync()?.get() })()
         .unwrap_or(false)
 }
 
 /// Resume the current media session. Returns true if the control was accepted.
 pub fn play() -> bool {
-    (|| -> windows::core::Result<bool> { Ok(current_session()?.TryPlayAsync()?.get()?) })()
+    (|| -> windows::core::Result<bool> { current_session()?.TryPlayAsync()?.get() })()
         .unwrap_or(false)
 }

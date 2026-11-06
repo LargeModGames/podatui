@@ -1253,10 +1253,6 @@ fn run_receiver(ctx: Ctx) {
     let mac = ctx.mac;
     log("run_receiver: entered");
     let mut buf = [0u8; 8192];
-    let mut decoder: Option<eld::Decoder> = None;
-    // Whether we've announced "mic fully operational" for the current capture session
-    // (fires when the buds actually start streaming audio, not just when it's requested).
-    let mut mic_announced = false;
     // Uplink timing, logged every 30 s while the mic is on: the virtual mic's ring
     // only holds ~100 ms, so arrival gaps longer than that come out as silence.
     let mut mic_stats = MicStats::default();
@@ -1280,7 +1276,6 @@ fn run_receiver(ctx: Ctx) {
             .join(", ")
     ));
     let mut last_case_present: Option<bool> = None;
-    let mut pending_card = false;
     // Consecutive failures to reach the AirPods. After a few (they're on the
     // iPhone / gone), we give up so we DON'T keep stealing them back — reset the
     // gate and wait for a fresh prompt/Connect.
@@ -1384,7 +1379,7 @@ fn run_receiver(ctx: Ctx) {
             st.connected = true;
             st.link_stale = false; // fresh session — whatever was wedged is gone
         }
-        pending_card = true;
+        let mut pending_card = true;
         ctx.push_state();
         log("run_receiver: handshake done, connected=true");
         // We are back after losing the buds to another device. The AAP session
@@ -1425,8 +1420,10 @@ fn run_receiver(ctx: Ctx) {
         // looks connected but the virtual mic stays silent (and the app, seeing no
         // input, churns the audio device connecting/disconnecting). Drop the decoder
         // so the first packet after the resume lays a fresh silence cushion.
-        decoder = None;
-        mic_announced = false; // re-announce "operational" once audio resumes
+        let mut decoder: Option<eld::Decoder> = None;
+        // Whether we've announced "mic fully operational" for the current capture session
+        // (fires when the buds actually start streaming audio, not just when it's requested).
+        let mut mic_announced = false; // re-announce "operational" once audio resumes
         if ctx.mic_on.load(Ordering::Relaxed) {
             let _ = driver.send(&aap::START_AUDIO);
             log("run_receiver: re-armed hi-res mic uplink (mic was on before reconnect)");
@@ -1454,7 +1451,6 @@ fn run_receiver(ctx: Ctx) {
         // (when the probe was sent, what `last_data` was at that moment)
         let mut probe_pending: Option<(Instant, Instant)> = None;
         let mut probe_misses = 0u32;
-        let mut last_audio = Instant::now(); // last time hi-res mic SDUs arrived
         let mut status_fails = 0u32;
         let mut low_warned = false; // low-battery overlay fired (hysteresis)
         let mut case_low_warned = false; // case low-battery overlay fired
@@ -1600,7 +1596,6 @@ fn run_receiver(ctx: Ctx) {
                     // Hi-res mic: decode the 0x58 uplink AUs → feed the virtual mic.
                     if ctx.mic_on.load(Ordering::Relaxed) {
                         if aap::is_audio_packet(data) {
-                            last_audio = Instant::now(); // watchdog: stream alive
                             if decoder.is_none() {
                                 decoder = eld::Decoder::new();
                                 // Prime the ring with silence so the first real
@@ -1884,17 +1879,12 @@ fn run_receiver(ctx: Ctx) {
             // full reconnect and drops the call — so we never touch the uplink here.
             // Crucially, while the mic is IN USE we leave the stream completely alone:
             // a silence is just you not speaking (muted / listening), not a fault, and
-            // dropping the decoder mid-call would glitch the next words. We only reset
-            // the clock and drop the decoder when the mic is NOT in use, so the next
-            // capture session starts from a clean silence cushion.
-            if ctx.mic_on.load(Ordering::Relaxed) {
-                // in use — do nothing
-            } else {
-                last_audio = Instant::now();
-                if decoder.is_some() {
-                    decoder = None;
-                    mic_announced = false;
-                }
+            // dropping the decoder mid-call would glitch the next words. We only drop
+            // the decoder when the mic is NOT in use, so the next capture session
+            // starts from a clean silence cushion.
+            if !ctx.mic_on.load(Ordering::Relaxed) && decoder.is_some() {
+                decoder = None;
+                mic_announced = false;
             }
             // Did the outstanding probe get its ACK? Any inbound AAP packet counts:
             // we are asking whether the channel carries traffic at all, not which

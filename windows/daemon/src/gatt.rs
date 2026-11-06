@@ -91,7 +91,7 @@ pub fn probe(drv: &Driver) -> Vec<String> {
             last_end = u16::from_le_bytes([buf[i + 2], buf[i + 3]]);
             i += each;
         }
-        if last_end == 0 || last_end >= 0xFFFF {
+        if last_end == 0 || last_end == 0xFFFF {
             break;
         }
         start = last_end + 1;

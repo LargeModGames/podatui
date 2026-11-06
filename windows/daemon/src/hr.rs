@@ -303,7 +303,7 @@ fn collect_payload_candidates(
     }
 
     let direct = data[start..end].to_vec();
-    if !candidates.iter().any(|c| *c == direct) {
+    if !candidates.contains(&direct) {
         candidates.push(direct);
     }
     if depth >= MAX_PAYLOAD_WRAPPER_DEPTH {
@@ -334,7 +334,7 @@ fn is_valid_heart_rate_payload(payload: &[u8]) -> bool {
         return false;
     }
     let bpm = payload[HEART_RATE_BPM_OFFSET];
-    if bpm < MIN_BPM || bpm > MAX_BPM {
+    if !(MIN_BPM..=MAX_BPM).contains(&bpm) {
         return false;
     }
     if payload[HEART_RATE_CONFIDENCE_OFFSET] < MIN_HEART_RATE_CONFIDENCE {
@@ -472,16 +472,12 @@ fn index_of_prefix(data: &[u8], prefix: &[u8], start_index: usize) -> Option<usi
     if start_index > last_start {
         return None;
     }
-    for start in start_index..=last_start {
-        if prefix
+    (start_index..=last_start).find(|&start| {
+        prefix
             .iter()
             .enumerate()
             .all(|(i, b)| data[start + i] == *b)
-        {
-            return Some(start);
-        }
-    }
-    None
+    })
 }
 
 /// The longest suffix of `data[start_index..]` that matches a *prefix* of
