@@ -9,6 +9,7 @@
 // No longer called — kept for a quick revert if the stereo-restore ever proves
 // necessary; see the note in set_mic(). (Crate-level allow(dead_code) covers it.)
 mod a2dp;
+use podatui_core::ear::{EarAction, EarPause};
 use podatui_core::{aap, hr};
 mod bt;
 mod devnode;
@@ -1429,8 +1430,7 @@ fn run_receiver(ctx: Ctx) {
             log("run_receiver: re-armed hi-res mic uplink (mic was on before reconnect)");
         }
 
-        let mut we_paused = false;
-        let mut prev_ear = [false; 2]; // last [primary, secondary] in-ear state
+        let mut ear_pause = EarPause::default();
         let mut last_status = Instant::now();
         let mut heartbeat = Instant::now();
         // ---- AAP keepalive: a probe with an expected answer, TCP-ACK style ----
@@ -1834,34 +1834,15 @@ fn run_receiver(ctx: Ctx) {
                         // 0x04 is a transitional (in-motion) value — hold the prior
                         // in-ear state for that bud instead of reading it as "out",
                         // so a bud being handled doesn't trigger a false auto-pause.
-                        let new_ear = [
-                            if primary.is_transitional() {
-                                prev_ear[0]
-                            } else {
-                                primary.in_ear()
-                            },
-                            if secondary.is_transitional() {
-                                prev_ear[1]
-                            } else {
-                                secondary.in_ear()
-                            },
-                        ];
-                        if new_ear != prev_ear {
-                            let all_in = new_ear[0] && new_ear[1];
-                            let was_wearing = prev_ear[0] || prev_ear[1];
-                            if all_in {
-                                // both back in the ears → resume what we paused
-                                if we_paused {
-                                    media::play();
-                                    we_paused = false;
-                                }
-                            } else if was_wearing && media::is_playing() {
-                                // a bud was just removed (Apple-style: pause on a
-                                // single removal, not only when both are out)
+                        let ear = |s: aap::EarStatus| (!s.is_transitional()).then_some(s.in_ear());
+                        match ear_pause.update([ear(primary), ear(secondary)], media::is_playing) {
+                            Some(EarAction::Pause) => {
                                 media::pause();
-                                we_paused = true;
                             }
-                            prev_ear = new_ear;
+                            Some(EarAction::Resume) => {
+                                media::play();
+                            }
+                            None => {}
                         }
                     }
                 }
@@ -1949,7 +1930,7 @@ fn run_receiver(ctx: Ctx) {
                 last_status = Instant::now();
                 let st = driver.status();
                 if !matches!(st, Ok(2)) && status_diag.elapsed() >= Duration::from_secs(2) {
-                    let both_out = !prev_ear[0] && !prev_ear[1];
+                    let both_out = ear_pause.in_ear() == [false, false];
                     log(&format!(
                         "status diag: st={st:?} both_out={both_out} fails={status_fails} data_age={}ms",
                         last_data.elapsed().as_millis()
