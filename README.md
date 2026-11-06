@@ -73,6 +73,7 @@ AirPods connection, and only one can own it.
   WinUI app (C#) and the installer
 - `docs/` and `AAP Definitions.md`: notes on the AirPods protocol
 - `.github/workflows/ci-windows.yml`: builds everything and publishes the release
+- `gate.ps1`: fmt, clippy, tests and the daemon release build, run before committing
 
 ## Credits
 
