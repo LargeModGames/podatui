@@ -504,11 +504,22 @@ mod tests {
         confidence: 0xA0,
     };
 
+    const PREFIX: [u8; 10] = [0x04, 0x00, 0x04, 0x00, 0x17, 0x00, 0x00, 0x00, 0x10, 0x00];
+
+    const TAILS: [[u8; 3]; 6] = [
+        [0x10, 0x00, 0x00],
+        [0x10, 0x00, 0x80],
+        [0x20, 0x00, 0x00],
+        [0x20, 0x80, 0x00],
+        [0x20, 0x02, 0x80],
+        [0x20, 0x82, 0x80],
+    ];
+
     fn payload(bpm: u8, confidence: u8, tail: [u8; 3]) -> Vec<u8> {
-        let mut p = vec![0u8; HEART_RATE_PAYLOAD_LENGTH];
-        p[HEART_RATE_BPM_OFFSET] = bpm;
-        p[HEART_RATE_CONFIDENCE_OFFSET] = confidence;
-        p[HEART_RATE_STATUS_TAIL_OFFSET..].copy_from_slice(&tail);
+        let mut p = vec![0u8; 18];
+        p[1] = bpm;
+        p[2] = confidence;
+        p[15..].copy_from_slice(&tail);
         p
     }
 
@@ -518,18 +529,14 @@ mod tests {
         command.extend_from_slice(payload);
         let mut body = vec![0x10, log_type, 0x2A, command.len() as u8];
         body.extend_from_slice(&command);
-        let mut f = RTBUDDY_FRAME_PREFIX.to_vec();
+        let mut f = PREFIX.to_vec();
         f.extend_from_slice(&(body.len() as u16).to_le_bytes());
         f.extend_from_slice(&body);
         f
     }
 
     fn hr_frame(bpm: u8, confidence: u8) -> Vec<u8> {
-        frame(
-            1,
-            19,
-            &payload(bpm, confidence, KNOWN_HEART_RATE_STATUS_TAILS[0]),
-        )
+        frame(1, 19, &payload(bpm, confidence, TAILS[0]))
     }
 
     fn decode(chunk: &[u8]) -> Vec<HrSample> {
@@ -538,15 +545,35 @@ mod tests {
 
     #[test]
     fn valid_frame_yields_sample() {
-        assert_eq!(hr_frame(72, 0xA0).len(), 38);
-        for log_type in LIVE_SENSOR_DATA_LOG_TYPES {
-            for service in HEART_RATE_REPORT_SERVICES {
-                for tail in KNOWN_HEART_RATE_STATUS_TAILS {
-                    let f = frame(log_type as u8, service as u8, &payload(72, 0xA0, tail));
+        for log_type in [1, 3] {
+            for service in [84, 20, 19] {
+                for tail in TAILS {
+                    let f = frame(log_type, service, &payload(72, 0xA0, tail));
                     assert_eq!(decode(&f), vec![SAMPLE]);
                 }
             }
         }
+    }
+
+    #[test]
+    fn golden_frame_decodes() {
+        #[rustfmt::skip]
+        let f = [
+            0x04, 0x00, 0x04, 0x00, 0x17, 0x00, 0x00, 0x00, 0x10, 0x00, 0x1A, 0x00, // header, body 26
+            0x10, 0x01, 0x2A, 0x16, // log type 1, command (field 5) of 22 bytes
+            0x08, 0x13, 0x1A, 0x12, // service 19, payload (field 3) of 18 bytes
+            0x00, 0x48, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
+        ];
+        assert_eq!(decode(&f), vec![SAMPLE]);
+        assert_eq!(hr_frame(72, 0xA0), f);
+    }
+
+    #[test]
+    fn bpm_only_at_index_1() {
+        let mut p = payload(0, 0xA0, TAILS[0]);
+        p[3] = 72;
+        assert_eq!(decode(&frame(1, 19, &p)), vec![]);
     }
 
     #[test]
@@ -572,7 +599,7 @@ mod tests {
 
     #[test]
     fn rejects_wrong_log_type_service_tail_and_length() {
-        let p = payload(72, 0xA0, KNOWN_HEART_RATE_STATUS_TAILS[0]);
+        let p = payload(72, 0xA0, TAILS[0]);
         assert_eq!(decode(&frame(2, 19, &p)), vec![]);
         assert_eq!(decode(&frame(1, 18, &p)), vec![]);
         assert_eq!(
@@ -627,8 +654,8 @@ mod tests {
         let f = hr_frame(72, 0xA0);
         assert!(contains_frame_prefix(&f));
         assert!(contains_frame_prefix(&[&[0xFF][..], &f].concat()));
-        assert!(contains_frame_prefix(&RTBUDDY_FRAME_PREFIX));
-        assert!(!contains_frame_prefix(&RTBUDDY_FRAME_PREFIX[..9]));
+        assert!(contains_frame_prefix(&PREFIX));
+        assert!(!contains_frame_prefix(&PREFIX[..9]));
         assert!(!contains_frame_prefix(&f[1..]));
         assert!(!contains_frame_prefix(&[]));
     }
