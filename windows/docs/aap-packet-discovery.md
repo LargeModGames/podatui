@@ -92,7 +92,7 @@ Workout flow does. So HR must be captured on the **iPhone**:
 ## 4. Part C — read & filter
 
 AAP rides L2CAP SDUs on **PSM `0x1001`**. Framing cheatsheet (from our code —
-`windows/daemon/src/aap.rs`):
+`core/src/aap.rs`):
 
 | Direction | Looks like | Meaning |
 |---|---|---|
@@ -176,7 +176,7 @@ whether the case battery is being reported.
 ## 7. Part F — bring it back
 
 - Protocol findings → append to **`AAP Definitions.md`** (the protocol doc).
-- HR frames → **`windows/daemon/src/aap.rs`** (the `HR_*` consts).
+- HR frames → **`core/src/aap.rs`** (the `HR_*` consts).
 - **Keep the per-action diff notes** — "these bytes changed when I did X" is the
   most valuable artifact; paste them into the PR / commit message so the
   provenance is clear.

@@ -78,7 +78,7 @@ On iOS 27 firmware the AirPods answer the start on 84 as **service 20**
 ## What the daemon decodes
 
 Each reading is an 18-byte payload inside a RTBuddy SensorDataWX frame
-([`daemon/src/hr.rs`](../daemon/src/hr.rs)):
+([`core/src/hr.rs`](../../core/src/hr.rs)):
 
 | byte | meaning |
 |---|---|
@@ -151,7 +151,7 @@ extra battery while it's on.
   security flags.
 - [`daemon/src/main.rs`](../daemon/src/main.rs) holds `hr_retry_campaign`, the
   enable and start sequence.
-- [`daemon/src/hr.rs`](../daemon/src/hr.rs) holds the RTBuddy decoder and the
+- [`core/src/hr.rs`](../../core/src/hr.rs) holds the RTBuddy decoder and the
   validity rules.
 - Upstream PR #702 is the Android heart-rate implementation. Our write-up of the MTU
   finding is in its thread.
