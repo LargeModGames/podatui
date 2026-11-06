@@ -18,6 +18,11 @@
 
     <MajorUpgrade Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of podatui is already installed." />
+    <!-- Upstream NTPods drives the same AirPods devnode: uninstall its MSI (any version)
+         along with older podatui ones. msi-setup.ps1 cleans up what that leaves. -->
+    <Upgrade Id="6F0B2D57-4C1E-4E8B-9C2F-6E7A1D3B5A90">
+      <UpgradeVersion Property="NTPODSPRODUCTS" Minimum="0.0.0" IncludeMinimum="yes" />
+    </Upgrade>
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="PodatuiIcon" SourceFile="$(IconFile)" />

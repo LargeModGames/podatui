@@ -73,8 +73,17 @@ if ($missing) {
     throw "This install folder is incomplete. Download the release again. Missing:`n  " + ($missing -join "`n  ")
 }
 
-# ---- 1. take over an older LibrePods install ---------------------------------
+# ---- 1. take over an NTPods or older LibrePods install -----------------------
 Stop-Podatui
+# An NTPods MSI left installed would, when uninstalled later, remove podatui's
+# ACX mic too (same hardware ID), so uninstall it now.
+$msi = New-Object -ComObject WindowsInstaller.Installer
+foreach ($code in @($msi.RelatedProducts('{6F0B2D57-4C1E-4E8B-9C2F-6E7A1D3B5A90}'))) {
+    Write-Host "==> Uninstalling NTPods ($code)"
+    $p = Start-Process msiexec.exe -ArgumentList '/x', $code, '/qn', '/norestart' -Wait -PassThru
+    if ($p.ExitCode -notin 0, 3010) { Write-Warning "Uninstalling NTPods failed (msiexec exit code $($p.ExitCode)); remove it in Settings > Apps." }
+}
+Remove-UpstreamNTPods $sid $env:LOCALAPPDATA $env:APPDATA
 Remove-LegacyLibrePods $sid $env:LOCALAPPDATA $env:APPDATA
 Remove-SetupLeftovers $env:LOCALAPPDATA
 

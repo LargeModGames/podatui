@@ -33,6 +33,7 @@ try {
         }
         'install' {
             Stop-Podatui
+            Remove-UpstreamNTPods $UserSid $LocalAppData $AppData
             Remove-LegacyLibrePods $UserSid $LocalAppData $AppData
             Remove-ZipInstall $LocalAppData $AppData
             Remove-SetupLeftovers $LocalAppData

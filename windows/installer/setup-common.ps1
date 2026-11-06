@@ -91,7 +91,7 @@ function Invoke-Tool([string]$what, [int[]]$ok, [scriptblock]$cmd) {
 }
 
 function Stop-Podatui {
-    Get-Process -Name 'podatui-winui', 'podatuid', 'librepods-winui', 'librepodsd', 'librepods-tray', 'librepods' -ErrorAction SilentlyContinue |
+    Get-Process -Name 'podatui-winui', 'podatuid', 'ntpods-winui', 'ntpodsd', 'librepods-winui', 'librepodsd', 'librepods-tray', 'librepods' -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }
@@ -140,10 +140,62 @@ function Remove-TestCert([string]$subject) {
 }
 
 # ---- older installs -----------------------------------------------------------
-# NTPods, which podatui is based on, used to be called LibrePods (for Windows).
-# Keep the user's settings and heart-rate history, and remove the old driver,
-# tasks, startup entries and test certificate so the two never fight over the
-# AirPods.
+# podatui is based on NTPods (arctumn/ntpods), which used to be called LibrePods
+# (for Windows). They all drive the same AirPods devnode, so keep the user's
+# settings and heart-rate history, and remove the old drivers, tasks, startup
+# entries and test certificate so they never fight over the AirPods.
+
+# An NTPods MSI is uninstalled before this runs, by install.ps1 or by podatui.msi's
+# Upgrade table. The latter skips NTPods' own driver and task cleanup, and a zip
+# install has none, so this does it.
+function Remove-UpstreamNTPods([string]$userSid, [string]$localAppData, [string]$appData) {
+    $old = Join-Path $localAppData 'NTPods'
+    $data = Join-Path $localAppData 'podatui'
+    $files = 'winui-settings.json', 'ui.pref', 'micname.txt', 'daemon.log', 'heart-rate.sqlite3', 'heart-rate.sqlite3-wal', 'heart-rate.sqlite3-shm'
+    # Only into a podatui without data of its own, so two histories never mix.
+    if ((Test-Path $old) -and -not ($files | Where-Object { Test-Path (Join-Path $data $_) })) {
+        Write-Host "==> Copying your settings and heart-rate history from $old"
+        New-Item -ItemType Directory -Force -Path $data | Out-Null
+        foreach ($f in $files) {
+            $from = Join-Path $old $f
+            if (Test-Path $from) { Copy-Item $from $data }
+        }
+    }
+    foreach ($t in 'NTPods Fix Driver', 'NTPods Rename Mic') {
+        Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    Remove-RunValues $userSid 'NTPods', 'NTPods Daemon'
+    $startup = Get-StartupDir $appData
+    foreach ($l in 'NTPods Daemon.lnk', 'NTPods.lnk') {
+        Remove-Item (Join-Path $startup $l) -Force -ErrorAction SilentlyContinue
+    }
+    # A zip install's programs. The user's data next to them stays.
+    foreach ($f in 'ntpodsd.exe', 'avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'fix-driver.ps1', 'rename-mic.ps1') {
+        Remove-Item (Join-Path $old $f) -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item (Join-Path $old 'winui') -Recurse -Force -ErrorAction SilentlyContinue
+    # Its mic is ROOT\NTPodsMicPC (PortCls) or ROOT\AudioCodec (ACX). The ACX one has
+    # podatui's hardware ID and provider, so it is told apart by its manufacturer.
+    # The device goes first: uninstalling only its package could rebind it to podatui's.
+    $oems = @(Get-DriverPackages 'NTPodsAAP.inf') + @(Get-DriverPackages 'NTPodsMicPC.inf')
+    $mics = @(Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
+            $_.HardwareID -contains 'ROOT\NTPodsMicPC' -or
+            ($_.HardwareID -contains 'ROOT\AudioCodec' -and $_.Manufacturer -eq 'NTPods') })
+    foreach ($d in $mics) {
+        $oems += (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_DriverInfPath' -ErrorAction SilentlyContinue).Data
+        Write-Host "==> Removing the NTPods microphone ($($d.InstanceId))"
+        pnputil /remove-device $d.InstanceId | Out-Null
+    }
+    foreach ($oem in ($oems | Where-Object { $_ } | Select-Object -Unique)) {
+        Write-Host "==> Removing the NTPods driver package $oem"
+        pnputil /delete-driver $oem /uninstall /force | Out-Null
+    }
+    Remove-TestCert 'CN=NTPods Test Cert'
+    Remove-Item 'HKLM:\Software\NTPods' -Recurse -Force -ErrorAction SilentlyContinue
+    # Its MSI's setup log and driver work folders.
+    Remove-Item (Join-Path $env:ProgramData 'NTPods') -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 function Remove-LegacyLibrePods([string]$userSid, [string]$localAppData, [string]$appData) {
     $legacy = Join-Path $localAppData 'LibrePods'
     $data = Join-Path $localAppData 'podatui'
@@ -181,8 +233,8 @@ function Remove-SetupLeftovers([string]$localAppData) {
     $temps = @((Join-Path $localAppData 'Temp'), $env:TEMP) | Select-Object -Unique
     foreach ($t in $temps) {
         Get-ChildItem $t -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like 'podatui-drivers-*' -or $_.Name -like 'LibrePods-drivers-*' -or
-                           $_.Name -in 'PodatuiMicPkg', 'LibrePodsMicPkg' } |
+            Where-Object { $_.Name -like 'podatui-drivers-*' -or $_.Name -like 'NTPods-drivers-*' -or $_.Name -like 'LibrePods-drivers-*' -or
+                           $_.Name -in 'PodatuiMicPkg', 'NTPodsMicPkg', 'LibrePodsMicPkg' } |
             ForEach-Object {
                 Write-Host "==> Removing leftover $($_.FullName)"
                 Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
@@ -307,9 +359,9 @@ function Uninstall-PodatuiDrivers([string]$root) {
 # Remove every mic driver package from the driver store, PortCls and ACX alike.
 # The ACX INF is named after the WDK sample it came from, so
 # match the provider too; older builds still carried the sample's VS_Microsoft /
-# LibrePods.
+# NTPods / LibrePods.
 function Remove-MicDriverPackages {
-    foreach ($p in @(@('PodatuiMicPC.inf', $null), @('audiocodec.inf', @('podatui', 'LibrePods', 'VS_Microsoft')))) {
+    foreach ($p in @(@('PodatuiMicPC.inf', $null), @('audiocodec.inf', @('podatui', 'NTPods', 'LibrePods', 'VS_Microsoft')))) {
         foreach ($oem in (Get-DriverPackages $p[0] $p[1])) {
             Write-Host "==> Removing driver package $oem ($($p[0]))"
             pnputil /delete-driver $oem /uninstall /force | Out-Null
