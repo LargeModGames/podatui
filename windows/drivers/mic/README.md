@@ -15,7 +15,8 @@ decoded AAC-ELD audio, so any app (Teams, Zoom, Discord, OBS…) can use it.
 
 This is based on the **Microsoft ACX `AudioCodec` sample** from
 [microsoft/Windows-driver-samples](https://github.com/microsoft/Windows-driver-samples/tree/main/audio/Acx/Samples)
-(**MIT licensed**), chosen because:
+(**MS-PL licensed**, see [`LICENSE`](LICENSE); this folder stays under MS-PL, not
+the GPL-3.0 of the rest of the repo), chosen because:
 
 - it's a **ROOT-enumerated** (software, no-hardware) audio device — i.e. virtual;
 - it already has a **capture circuit** (`Common/CaptureCircuit.cpp`) — a mic;
