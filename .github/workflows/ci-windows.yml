@@ -9,9 +9,8 @@ name: Windows CI (frontend)
 # The two kernel drivers (AAP L2CAP + hi-res mic) are built here from source with
 # the WDK (installed via winget — approach from the Gab4545/librepods fork), their
 # catalogs are regenerated, and the result overwrites windows/drivers/*/prebuilt so
-# the install folder always carries drivers that match the source. The committed
-# prebuilt packages remain for local installs; install.ps1 test-signs them on the
-# user's machine either way.
+# the install folder always carries drivers that match the source. No driver
+# binaries are committed; install.ps1 test-signs these on the user's machine.
 
 on:
   push:
@@ -136,7 +135,7 @@ jobs:
             & $inf2cat.FullName /driver:$pkg /os:10_X64
             $cat = Join-Path $pkg $d.Cat
             if (-not (Test-Path $cat)) { throw "$($d.Name): Inf2Cat did not produce $($d.Cat)" }
-            # The PortCls mic's prebuilt folder isn't in git; the others are, and get overwritten.
+            # The prebuilt folders aren't in git; this creates them.
             New-Item -ItemType Directory -Force -Path $d.Out | Out-Null
             Copy-Item (Join-Path $pkg '*') $d.Out -Force
             Write-Host "==> Freshly built $($d.Name) copied into $($d.Out)"

@@ -56,11 +56,12 @@ inf2cat /driver:<pkg-dir> /os:10_X64
 The driver is not attestation-signed, so Windows must be in test mode. **Advanced
 users only; back up your BitLocker recovery key and make a restore point first.**
 
-The easy path — a compiled package is committed in [`prebuilt/`](prebuilt), so no
-Visual Studio or WDK is needed to install it (only `signtool` from the SDK):
+The easy path: the release zip's `driver\` folder is a compiled package built
+from source by CI, so no Visual Studio or WDK is needed to install it (only
+`signtool` from the SDK):
 
 ```powershell
-.\install.ps1 -PackageDir .\prebuilt      # creates a test cert, signs, trusts, installs
+.\install.ps1 -PackageDir <zip>\driver    # creates a test cert, signs, trusts, installs
 ```
 
 Or the whole stack at once (both drivers + apps) with

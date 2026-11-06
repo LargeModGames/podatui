@@ -90,12 +90,11 @@ Visual Studio or VC++ redistributable needed. Reboot afterwards.
 The release zip carries both driver packages, built from source by CI:
 `driver\` (AAP channel) and `driver-mic\` (virtual mic), each `.inf` + `.sys` +
 `.cat`. To install or update only the drivers, point the repo's scripts at those
-folders from an **admin** PowerShell. An older AAP package is also committed
-under `drivers/aap/prebuilt`, but it's refreshed by hand and **can lag the
-source**, so prefer the release zip. The mic package only comes from CI.
+folders from an **admin** PowerShell. No driver binaries are committed; they
+only come from CI (or your own WDK build).
 
 ```powershell
-.\drivers\aap\install.ps1 -PackageDir <zip>\driver   # AAP channel  (or .\drivers\aap\prebuilt)
+.\drivers\aap\install.ps1 -PackageDir <zip>\driver   # AAP channel
 ```
 
 Success for the AAP driver shows `Driver package installed on device:

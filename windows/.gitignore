@@ -15,5 +15,5 @@ dist/
 # Driver build output (local WDK builds; CI builds its own)
 drivers/**/x64/
 drivers/mic-portcls/x64/
-# The mic driver package is built by CI, never committed
-drivers/mic-portcls/prebuilt/
+# Driver packages are built from source by CI, never committed
+drivers/**/prebuilt/

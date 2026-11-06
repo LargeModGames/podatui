@@ -53,8 +53,8 @@ Done and in daily use:
 - [x] The capture circuit is restricted to **48 kHz mono 16-bit** (what the decoded
   AirPods stream is resampled to).
 
-A **prebuilt, ready-to-install package** is committed in [`prebuilt/`](prebuilt) —
-no Visual Studio or WDK needed to install it.
+A **ready-to-install package** built from source by CI is in the release zip's
+`driver-mic-acx\` folder, so no Visual Studio or WDK is needed to install it.
 
 ## Build
 
