@@ -19,5 +19,6 @@ $env:RUSTFLAGS = '-C target-feature=+crt-static'
 try { Invoke-Step 'windows\daemon' 'release build' 'build', '--release' }
 finally { $env:RUSTFLAGS = $saved }
 
-$exe = Join-Path $PSScriptRoot 'windows\daemon\target\release\podatuid.exe'
+$target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $PSScriptRoot 'windows\daemon\target' }
+$exe = Join-Path $target 'release\podatuid.exe'
 Write-Host ("podatuid.exe: {0:N0} bytes" -f (Get-Item $exe).Length)
