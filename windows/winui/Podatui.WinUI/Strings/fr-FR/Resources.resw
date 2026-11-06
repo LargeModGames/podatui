@@ -182,6 +182,7 @@
   <data name="Overlay_StereoRestored" xml:space="preserve"><value>Stéréo restaurée</value></data>
   <data name="SettingsAbout.Text" xml:space="preserve"><value>À propos</value></data>
   <data name="SettingsAppDesc.Text" xml:space="preserve"><value>podatui — client Windows natif de podatuid</value></data>
+  <data name="SettingsLicense.Text" xml:space="preserve"><value>Logiciel libre sous licence GPL-3.0, sans aucune garantie. Basé sur NTPods d'arctumn et sur LibrePods. Code source : github.com/LargeModGames/podatui</value></data>
 
   <!-- ===== IslandView ===== -->
   <data name="IslandCaseLabel.Text" xml:space="preserve"><value>Boîtier</value></data>

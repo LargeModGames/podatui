@@ -167,6 +167,10 @@
                     <TextBlock Text="{Binding [SettingsAppDesc_Text], Source={StaticResource Loc}}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding [SettingsLicense_Text], Source={StaticResource Loc}}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               TextWrapping="Wrap" />
                     <TextBlock x:Name="VersionText"
                                Margin="0,4,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
