@@ -8,11 +8,13 @@ on:
     paths:
       - 'core/**'
       - 'linux/**'
+      - 'tui/**'
       - '.github/workflows/ci-linux.yml'
   pull_request:
     paths:
       - 'core/**'
       - 'linux/**'
+      - 'tui/**'
       - '.github/workflows/ci-linux.yml'
 
 jobs:
@@ -21,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [core, linux/daemon]
+        crate: [core, linux/daemon, tui]
     defaults:
       run:
         working-directory: ${{ matrix.crate }}

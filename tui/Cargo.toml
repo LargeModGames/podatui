@@ -1,0 +1,11 @@
+[package]
+name = "podatui"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal UI for AirPods on Linux, in the style of macOS System Settings."
+
+[dependencies]
+podatui-core = { path = "../core" }
+podatuid = { path = "../linux/daemon" }
+ratatui = "0.30"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }

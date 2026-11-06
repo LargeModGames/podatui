@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-for d in core linux/daemon; do
+for d in core linux/daemon tui; do
     echo "==> $d"
     (cd "$d" && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
 done
