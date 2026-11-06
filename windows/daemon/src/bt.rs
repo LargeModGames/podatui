@@ -11,6 +11,15 @@ use windows_sys::Win32::Devices::Bluetooth::{
     BluetoothGetRadioInfo, BluetoothSetServiceState, BLUETOOTH_DEVICE_INFO,
     BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS, BLUETOOTH_RADIO_INFO,
 };
+use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+    CM_Get_DevNode_PropertyW, CM_Get_Device_ID_ListW, CM_Get_Device_ID_List_SizeW,
+    CM_Locate_DevNodeW, CM_GETIDLIST_FILTER_ENUMERATOR, CM_GETIDLIST_FILTER_PRESENT,
+    CM_LOCATE_DEVNODE_NORMAL, CR_SUCCESS,
+};
+use windows_sys::Win32::Devices::Properties::{
+    DEVPKEY_Device_ContainerId, DEVPROPKEY, DEVPROPTYPE, DEVPROP_TYPE_BYTE, DEVPROP_TYPE_GUID,
+    DEVPROP_TYPE_UINT16,
+};
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 
 // Classic-audio service GUIDs — A2DP AudioSink + Handsfree.
@@ -388,9 +397,186 @@ pub fn find_airpods() -> Option<(u64, String)> {
     by_service.or(by_name)
 }
 
+const BT_VID: DEVPROPKEY = DEVPROPKEY {
+    fmtid: GUID::from_u128(0x2bd67d8b_8beb_48d5_87e0_6cda3428040a),
+    pid: 7,
+};
+const BT_PID: DEVPROPKEY = DEVPROPKEY {
+    fmtid: GUID::from_u128(0x2bd67d8b_8beb_48d5_87e0_6cda3428040a),
+    pid: 8,
+};
+const HFP_BATTERY: DEVPROPKEY = DEVPROPKEY {
+    fmtid: GUID::from_u128(0x104ea319_6ee2_4701_bd47_8ddbf425bbe5),
+    pid: 2,
+};
+
+/// What Windows keeps on a paired device's BTHENUM devnodes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceProps {
+    pub vid: Option<u16>,
+    pub pid: Option<u16>,
+    pub container: Option<u128>,
+    pub hfp_battery: Option<u8>,
+}
+
+/// VID and PID live on the service devnodes, not on `DEV_<MAC>`. The HFP battery
+/// is only there while the Hands-Free link is up.
+pub fn device_props(mac: u64) -> DeviceProps {
+    let mut p = DeviceProps::default();
+    for id in bthenum_ids() {
+        let Some((m, service)) = parse_bthenum(&id) else {
+            continue;
+        };
+        if m != mac {
+            continue;
+        }
+        let Some(dn) = locate(&id) else {
+            continue;
+        };
+        unsafe {
+            p.vid = p.vid.or_else(|| prop(dn, &BT_VID, DEVPROP_TYPE_UINT16));
+            p.pid = p.pid.or_else(|| prop(dn, &BT_PID, DEVPROP_TYPE_UINT16));
+            p.container = p.container.or_else(|| {
+                prop::<GUID>(dn, &DEVPKEY_Device_ContainerId, DEVPROP_TYPE_GUID)
+                    .map(|g| guid_u128(&g))
+            });
+            if service == Some(0x0000_111e) {
+                p.hfp_battery = prop(dn, &HFP_BATTERY, DEVPROP_TYPE_BYTE);
+            }
+        }
+    }
+    p
+}
+
+fn bthenum_ids() -> Vec<String> {
+    let filter: Vec<u16> = "BTHENUM\0".encode_utf16().collect();
+    let flags = CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT;
+    unsafe {
+        let mut len = 0u32;
+        if CM_Get_Device_ID_List_SizeW(&mut len, filter.as_ptr(), flags) != CR_SUCCESS {
+            return Vec::new();
+        }
+        let mut buf = vec![0u16; len as usize];
+        if CM_Get_Device_ID_ListW(filter.as_ptr(), buf.as_mut_ptr(), len, flags) != CR_SUCCESS {
+            return Vec::new();
+        }
+        buf.split(|&c| c == 0)
+            .filter(|s| !s.is_empty())
+            .map(String::from_utf16_lossy)
+            .collect()
+    }
+}
+
+fn locate(id: &str) -> Option<u32> {
+    let w: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut dn = 0u32;
+    let r = unsafe { CM_Locate_DevNodeW(&mut dn, w.as_ptr(), CM_LOCATE_DEVNODE_NORMAL) };
+    (r == CR_SUCCESS).then_some(dn)
+}
+
+/// `T` must be plain data whose size matches the property type `want`.
+unsafe fn prop<T: Copy>(dn: u32, key: &DEVPROPKEY, want: DEVPROPTYPE) -> Option<T> {
+    let mut v: T = zeroed();
+    let mut ty: DEVPROPTYPE = 0;
+    let mut size = size_of::<T>() as u32;
+    let r = CM_Get_DevNode_PropertyW(dn, key, &mut ty, &mut v as *mut T as *mut u8, &mut size, 0);
+    (r == CR_SUCCESS && ty == want && size as usize == size_of::<T>()).then_some(v)
+}
+
+fn guid_u128(g: &GUID) -> u128 {
+    ((g.data1 as u128) << 96)
+        | ((g.data2 as u128) << 80)
+        | ((g.data3 as u128) << 64)
+        | u64::from_be_bytes(g.data4) as u128
+}
+
+/// MAC and service UUID (its first 32 bits, None on the `DEV_<MAC>` node) of a
+/// BTHENUM instance ID.
+fn parse_bthenum(id: &str) -> Option<(u64, Option<u32>)> {
+    let mut parts = id.split('\\');
+    let (bus, dev, inst) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || !bus.eq_ignore_ascii_case("BTHENUM") {
+        return None;
+    }
+    let hex12 = |s: &str| {
+        (s.len() == 12 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+            .then(|| u64::from_str_radix(s, 16).ok())
+            .flatten()
+    };
+    if dev.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("DEV_")) {
+        return Some((hex12(&dev[4..])?, None));
+    }
+    let uuid = dev.strip_prefix('{')?.get(..8)?;
+    if !uuid.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let service = u32::from_str_radix(uuid, 16).ok()?;
+    let mac = inst.rsplit('&').next()?.split('_').next()?;
+    Some((hex12(mac)?, Some(service)))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::kind_from_cod;
+    use super::{guid_u128, kind_from_cod, parse_bthenum, GUID};
+
+    const MAC: u64 = 0xECE9_D262_EBE8;
+
+    #[test]
+    fn bthenum_device_node() {
+        assert_eq!(
+            parse_bthenum(r"BTHENUM\DEV_ECE9D262EBE8\B&62612BF&1&BLUETOOTHDEVICE_ECE9D262EBE8"),
+            Some((MAC, None))
+        );
+        assert_eq!(
+            parse_bthenum(r"BTHENUM\Dev_88C9E8F76A0E\b&62612bf&1&BluetoothDevice_88C9E8F76A0E"),
+            Some((0x88C9_E8F7_6A0E, None))
+        );
+    }
+
+    #[test]
+    fn bthenum_service_nodes() {
+        assert_eq!(
+            parse_bthenum(
+                r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_VID&0001004C_PID&2027\B&62612BF&1&ECE9D262EBE8_C00000000"
+            ),
+            Some((MAC, Some(0x0000_111e)))
+        );
+        assert_eq!(
+            parse_bthenum(
+                r"BTHENUM\{74ec2172-0bad-4d01-8f77-997b2be0722a}_VID&0001004c_PID&2027\b&62612bf&1&ece9d262ebe8_C00000000"
+            ),
+            Some((MAC, Some(0x74ec_2172)))
+        );
+        assert_eq!(
+            parse_bthenum(
+                r"BTHENUM\{0000110a-0000-1000-8000-00805f9b34fb}_LOCALMFG&000f\7&2f9b1c5b&0&000000000000_00000000"
+            ),
+            Some((0, Some(0x0000_110a)))
+        );
+    }
+
+    #[test]
+    fn bthenum_rejects() {
+        for id in [
+            r"BTHLE\DEV_ECE9D262EBE8\7&1&ECE9D262EBE8",
+            r"BTHENUM\DEV_ECE9D262EBE8",
+            r"BTHENUM\DEV_ECE9D262EBE\B&1&BLUETOOTHDEVICE_ECE9D262EBE",
+            r"BTHENUM\DEV_ECE9D262EBEG\B&1&BLUETOOTHDEVICE_ECE9D262EBEG",
+            r"BTHENUM\DEV_ECE9D262EBE8\B&1\extra",
+            r"BTHENUM\GENERIC_DEVICE\B&1",
+            r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_VID&0001004C_PID&2027\B&62612BF&1&_C00000000",
+            r"BTHENUM\{+000111E-0000-1000-8000-00805F9B34FB}_VID&0001004C_PID&2027\B&62612BF&1&ECE9D262EBE8_C00000000",
+            r"BTHENUM\{0000",
+        ] {
+            assert_eq!(parse_bthenum(id), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn guid_round_trip() {
+        let v = 0x0065cbfd_f3fc_53ff_8fa5_91bf2c35671f;
+        assert_eq!(guid_u128(&GUID::from_u128(v)), v);
+    }
 
     #[test]
     fn kind_from_cod_table() {

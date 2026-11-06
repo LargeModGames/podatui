@@ -22,6 +22,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Properties",
     "Win32_Devices_Bluetooth",
 ] }
 # `windows` (COM/WinRT) for SMTC ear-detection auto-pause (media.rs) + the BLE
