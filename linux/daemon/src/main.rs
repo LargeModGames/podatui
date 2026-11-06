@@ -1,45 +1,25 @@
 //! podatuid for Linux: opens the AirPods' AAP channel over BlueZ and prints what they report.
-//!
-//! The connect and handshake sequence follows LibrePods' linux-rust client
-//! (https://github.com/kavishdevar/librepods, GPL-3.0).
 
-use bluer::l2cap::{SeqPacket, Socket, SocketAddr};
-use bluer::{Adapter, Address, AddressType, Uuid};
 use podatui_core::aap::{self, Battery, EarStatus};
-use std::error::Error;
-use std::time::Duration;
-use tokio::time::{sleep, timeout};
-
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
-
-const AAP_SERVICE: Uuid = Uuid::from_u128(0x74ec2172_0bad_4d01_8f77_997b2be0722a);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const SETUP_GAP: Duration = Duration::from_millis(300);
+use podatuid::Result;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let session = bluer::Session::new().await?;
-    let adapter = session.default_adapter().await?;
     let addr = match std::env::args().nth(1) {
-        Some(mac) => mac.parse()?,
-        None => find_airpods(&adapter).await?,
+        Some(mac) => Some(mac.parse()?),
+        None => None,
     };
-
-    println!("connecting to {addr} on PSM {:#06x}", aap::PSM_AACP);
-    let link = connect(addr).await?;
-    for packet in [
-        &aap::HANDSHAKE[..],
-        &aap::SET_FEATURES[..],
-        &aap::REQUEST_NOTIFS[..],
-    ] {
-        link.send(packet).await?;
-        sleep(SETUP_GAP).await;
-    }
-    println!("handshake sent");
+    let airpods = podatuid::open(addr).await?;
+    println!(
+        "connected to {} ({}) on PSM {:#06x}",
+        airpods.name,
+        airpods.addr,
+        aap::PSM_AACP
+    );
 
     let mut buf = [0u8; 1024];
     loop {
-        let n = link.recv(&mut buf).await?;
+        let n = airpods.link.recv(&mut buf).await?;
         if n == 0 {
             println!("AirPods closed the link");
             return Ok(());
@@ -49,29 +29,6 @@ async fn main() -> Result<()> {
             None => println!("? {}", hex(&buf[..n])),
         }
     }
-}
-
-/// The first connected device that offers the AAP service.
-async fn find_airpods(adapter: &Adapter) -> Result<Address> {
-    for addr in adapter.device_addresses().await? {
-        let device = adapter.device(addr)?;
-        if device.is_connected().await?
-            && device
-                .uuids()
-                .await?
-                .unwrap_or_default()
-                .contains(&AAP_SERVICE)
-        {
-            return Ok(addr);
-        }
-    }
-    Err("no connected AirPods found; connect them in bluetoothctl first".into())
-}
-
-async fn connect(addr: Address) -> Result<SeqPacket> {
-    let target = SocketAddr::new(addr, AddressType::BrEdr, aap::PSM_AACP);
-    let socket = Socket::new_seq_packet()?;
-    Ok(timeout(CONNECT_TIMEOUT, socket.connect(target)).await??)
 }
 
 /// One human-readable line for the packets this slice understands.
