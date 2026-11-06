@@ -4,7 +4,8 @@
 
 - Fork and rebrand of arctumn/ntpods (full history kept), NOTICE, GPL notice in the app, NTPods
   takeover in the installer, driver binaries no longer committed (CI builds them).
-- Daemon fmt/clippy clean; CI runs `gate.ps1` on Windows and core tests on Linux.
+- Daemon fmt/clippy clean; CI runs `gate.ps1` on Windows, and fmt, clippy and tests for core,
+  linux/daemon and tui on Linux.
 - Core split steps 1-5 (`core-split-plan.md`): AAP and heart-rate code moved into `podatui-core`
   with tests; IPC wire format pinned by golden tests.
 - Windows driverless steps 1-7 (`windows-driverless-plan.md`):
