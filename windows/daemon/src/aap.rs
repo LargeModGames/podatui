@@ -567,3 +567,348 @@ pub fn parse_anc_mode(data: &[u8]) -> Option<u8> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ONE_HOST: [u8; 17] = [
+        0x04, 0x00, 0x04, 0x00, 0x2E, 0x00, 0x01, 0x00, 0x01, 0x20, 0xBD, 0x1D, 0x72, 0x90, 0x9C,
+        0x02, 0x06,
+    ];
+    const TWO_HOSTS: [u8; 25] = [
+        0x04, 0x00, 0x04, 0x00, 0x2E, 0x00, 0x01, 0x22, 0x02, 0x68, 0x44, 0x65, 0x83, 0x8A, 0x74,
+        0x01, 0x00, 0x20, 0xBD, 0x1D, 0x72, 0x90, 0x9C, 0x02, 0x06,
+    ];
+
+    fn battery(b: Battery) -> ([Option<u8>; 4], [bool; 4]) {
+        (
+            [b.headphone, b.left, b.right, b.case],
+            [
+                b.headphone_charging,
+                b.left_charging,
+                b.right_charging,
+                b.case_charging,
+            ],
+        )
+    }
+
+    fn ear(a: u8, b: u8) -> Option<(EarStatus, EarStatus)> {
+        parse_ear_detection(&[0x04, 0x00, 0x04, 0x00, 0x06, 0x00, a, b])
+    }
+
+    fn metadata_packet(strings: &[&str]) -> Vec<u8> {
+        let mut d = vec![0x04, 0x00, 0x04, 0x00, 0x1D, 0x00, 0x02, 0xED, 0x00];
+        for s in strings {
+            d.extend_from_slice(s.as_bytes());
+            d.push(0);
+        }
+        d
+    }
+
+    fn aus(sdu: &[u8]) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        for_each_au(sdu, |au| out.push(au.to_vec()));
+        out
+    }
+
+    #[test]
+    fn connected_devices_one_host() {
+        assert_eq!(
+            parse_connected_devices(&ONE_HOST),
+            Some(vec![(0x20bd1d72909c, [0x02, 0x06])])
+        );
+    }
+
+    #[test]
+    fn connected_devices_two_hosts() {
+        assert_eq!(
+            parse_connected_devices(&TWO_HOSTS),
+            Some(vec![
+                (0x684465838a74, [0x01, 0x00]),
+                (0x20bd1d72909c, [0x02, 0x06])
+            ])
+        );
+    }
+
+    #[test]
+    fn connected_devices_truncated_and_rejected() {
+        let mut d = ONE_HOST;
+        d[8] = 2;
+        assert_eq!(
+            parse_connected_devices(&d),
+            Some(vec![(0x20bd1d72909c, [0x02, 0x06])])
+        );
+        d[8] = 0;
+        assert_eq!(parse_connected_devices(&d), Some(vec![]));
+        assert_eq!(parse_connected_devices(&ONE_HOST[..8]), None);
+        let mut d = ONE_HOST;
+        d[0] = 0x05;
+        assert_eq!(parse_connected_devices(&d), None);
+        let mut d = ONE_HOST;
+        d[4] = 0x2B;
+        assert_eq!(parse_connected_devices(&d), None);
+    }
+
+    #[test]
+    fn sensor_stream_matches_captured_heart_rate_start() {
+        assert_eq!(
+            sensor_stream(152, STREAM_HEART_RATE_LEGACY, 1_000_000),
+            [
+                0x04, 0x00, 0x04, 0x00, 0x17, 0x00, 0x00, 0x00, 0x10, 0x00, 0x10, 0x00, 0x08, 0x98,
+                0x01, 0x42, 0x0B, 0x08, 0x13, 0x10, 0x02, 0x1A, 0x05, 0x01, 0x40, 0x42, 0x0F, 0x00,
+            ]
+        );
+    }
+
+    #[test]
+    fn battery_full_with_charging() {
+        let d = [
+            0x04, 0x00, 0x04, 0x00, 0x04, 0x00, 0x04, 0x01, 0x01, 0xFF, 0x04, 0x01, 0x02, 0x01,
+            0x64, 0x02, 0x01, 0x04, 0x01, 0x63, 0x01, 0x01, 0x08, 0x01, 0x11, 0x05, 0x01,
+        ];
+        assert_eq!(
+            battery(parse_battery(&d).unwrap()),
+            (
+                [None, Some(99), Some(100), Some(17)],
+                [false, true, false, true]
+            )
+        );
+    }
+
+    #[test]
+    fn battery_partial() {
+        let d = [
+            0x04, 0x00, 0x04, 0x00, 0x04, 0x00, 0x04, 0x02, 0x01, 0x50, 0x04, 0x01, 0x10, 0x01,
+            0x40, 0x01, 0x01, 0x04, 0x01, 0x32, 0x02, 0x01, 0x08, 0x01, 0x20,
+        ];
+        assert_eq!(
+            battery(parse_battery(&d).unwrap()),
+            ([None, Some(50), None, None], [false; 4])
+        );
+        let d = [
+            0x04, 0x00, 0x04, 0x00, 0x04, 0x00, 0x01, 0x08, 0x01, 0x30, 0x01,
+        ];
+        assert_eq!(
+            battery(parse_battery(&d).unwrap()),
+            ([None, None, None, Some(48)], [false, false, false, true])
+        );
+    }
+
+    #[test]
+    fn battery_rejected() {
+        let d = [0x04, 0x00, 0x04, 0x00, 0x04, 0x00, 0x00];
+        assert_eq!(battery(parse_battery(&d).unwrap()), ([None; 4], [false; 4]));
+        assert!(parse_battery(&d[..6]).is_none());
+        assert!(parse_battery(&[0x04, 0x00, 0x05, 0x00, 0x04, 0x00, 0x00]).is_none());
+        assert!(parse_battery(&[0x04, 0x00, 0x04, 0x00, 0x06, 0x00, 0x00]).is_none());
+    }
+
+    #[test]
+    fn ear_detection_bytes() {
+        assert_eq!(
+            ear(0x00, 0x01),
+            Some((EarStatus::InEar, EarStatus::OutOfEar))
+        );
+        assert_eq!(
+            ear(0x02, 0x03),
+            Some((EarStatus::InCase, EarStatus::Disconnected))
+        );
+        assert_eq!(
+            ear(0x04, 0x7F),
+            Some((EarStatus::Transitional, EarStatus::OutOfEar))
+        );
+    }
+
+    #[test]
+    fn ear_status_predicates() {
+        let all = [
+            EarStatus::InEar,
+            EarStatus::OutOfEar,
+            EarStatus::InCase,
+            EarStatus::Disconnected,
+            EarStatus::Transitional,
+        ];
+        for s in all {
+            assert_eq!(s.in_ear(), s == EarStatus::InEar);
+            assert_eq!(s.is_transitional(), s == EarStatus::Transitional);
+        }
+    }
+
+    #[test]
+    fn ear_detection_rejected() {
+        let d = [0x04, 0x00, 0x04, 0x00, 0x06, 0x00, 0x00, 0x00];
+        assert_eq!(parse_ear_detection(&d[..7]), None);
+        assert_eq!(
+            parse_ear_detection(&[0x04, 0x01, 0x04, 0x00, 0x06, 0x00, 0x00, 0x00]),
+            None
+        );
+        assert_eq!(
+            parse_ear_detection(&[0x04, 0x00, 0x04, 0x00, 0x04, 0x00, 0x00, 0x00]),
+            None
+        );
+    }
+
+    #[test]
+    fn anc_mode_is_control_value_0x0d() {
+        let anc = anc_command(2);
+        let other = control_command(0x1A, 0x01);
+        let bad_header = [0x05, 0x00, 0x04, 0x00, 0x09, 0x00, 0x0D, 0x02];
+        let bad_opcode = [0x04, 0x00, 0x04, 0x00, 0x0A, 0x00, 0x0D, 0x02];
+        let cases: [&[u8]; 6] = [&anc, &anc[..8], &anc[..7], &other, &bad_header, &bad_opcode];
+        for d in cases {
+            assert_eq!(parse_anc_mode(d), parse_control_value(d, 0x0D));
+        }
+        assert_eq!(parse_anc_mode(&anc), Some(2));
+        assert_eq!(parse_anc_mode(&anc[..8]), Some(2));
+        assert_eq!(parse_anc_mode(&other), None);
+    }
+
+    #[test]
+    fn control_value_parsing() {
+        let d = control_command(0x1A, 0x07);
+        assert_eq!(parse_control_value(&d, 0x1A), Some(0x07));
+        assert_eq!(parse_control_value(&d, 0x0D), None);
+        assert_eq!(parse_control_value(&d[..7], 0x1A), None);
+        let mut d = control_command(0x1A, 0x07);
+        d[2] = 0x05;
+        assert_eq!(parse_control_value(&d, 0x1A), None);
+        let mut d = control_command(0x1A, 0x07);
+        d[4] = 0x0A;
+        assert_eq!(parse_control_value(&d, 0x1A), None);
+    }
+
+    #[test]
+    fn conversational_awareness() {
+        let d = [0x04, 0x00, 0x04, 0x00, 0x4B, 0x00, 0x02, 0x00, 0x01, 0x03];
+        assert_eq!(parse_conversational_awareness(&d), Some(3));
+        assert_eq!(parse_conversational_awareness(&d[..9]), None);
+        let mut bad = d;
+        bad[0] = 0x05;
+        assert_eq!(parse_conversational_awareness(&bad), None);
+        let mut bad = d;
+        bad[4] = 0x4C;
+        assert_eq!(parse_conversational_awareness(&bad), None);
+    }
+
+    #[test]
+    fn metadata_fields() {
+        let d = metadata_packet(&[
+            "Jay's AirPods Pro",
+            "A3063",
+            "Apple Inc.",
+            "H3KXYZ123",
+            "8A356",
+        ]);
+        assert_eq!(
+            parse_metadata(&d),
+            Some(("A3063".into(), "8A356".into(), "H3KXYZ123".into()))
+        );
+        let d = metadata_packet(&["Name", "A3063"]);
+        assert_eq!(
+            parse_metadata(&d),
+            Some(("A3063".into(), String::new(), String::new()))
+        );
+    }
+
+    #[test]
+    fn metadata_empty_and_rejected() {
+        assert_eq!(parse_metadata(&metadata_packet(&["Name", "ab"])), None);
+        let d = metadata_packet(&["Name", "A3063", "Apple Inc.", "SERIAL", "8A356"]);
+        assert_eq!(parse_metadata(&d[..7]), None);
+        let mut bad = d.clone();
+        bad[2] = 0x05;
+        assert_eq!(parse_metadata(&bad), None);
+        let mut bad = d;
+        bad[4] = 0x1E;
+        assert_eq!(parse_metadata(&bad), None);
+    }
+
+    #[test]
+    fn rename_round_trip() {
+        let f = build_rename("Jay's AirPods");
+        assert_eq!(f[..9], [0x04, 0x00, 0x04, 0x00, 0x1A, 0x00, 0x01, 13, 0x00]);
+        assert_eq!(parse_rename(&f).as_deref(), Some("Jay's AirPods"));
+        assert_eq!(parse_rename(&build_rename("")).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn rename_rejected() {
+        let f = build_rename("AirPods");
+        assert_eq!(parse_rename(&f[..f.len() - 1]), None);
+        assert_eq!(parse_rename(&f[..8]), None);
+        let mut bad = f.clone();
+        bad[9] = 0xFF;
+        assert_eq!(parse_rename(&bad), None);
+        let mut bad = f.clone();
+        bad[0] = 0x05;
+        assert_eq!(parse_rename(&bad), None);
+        let mut bad = f;
+        bad[4] = 0x1B;
+        assert_eq!(parse_rename(&bad), None);
+    }
+
+    #[test]
+    fn command_layouts() {
+        assert_eq!(
+            anc_command(3),
+            [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x0D, 0x03, 0x00, 0x00, 0x00]
+        );
+        assert_eq!(
+            control_command(0x28, 0x07),
+            [0x04, 0x00, 0x04, 0x00, 0x09, 0x00, 0x28, 0x07, 0x00, 0x00, 0x00]
+        );
+        assert_eq!(feature_command(0x28, true), control_command(0x28, 0x01));
+        assert_eq!(feature_command(0x28, false), control_command(0x28, 0x02));
+    }
+
+    #[test]
+    fn audio_packet_detection() {
+        let d = [0x04, 0x00, 0x04, 0x00, 0x58, 0x00, 0x01, 0x00];
+        assert!(is_audio_packet(&d));
+        assert!(!is_audio_packet(&d[..7]));
+        assert!(is_audio_packet(&[
+            0x04, 0xFF, 0x04, 0xFF, 0x58, 0xFF, 0x01, 0x00
+        ]));
+        for (i, v) in [(0, 0x05), (2, 0x05), (4, 0x09), (6, 0x00), (7, 0x01)] {
+            let mut bad = d;
+            bad[i] = v;
+            assert!(!is_audio_packet(&bad));
+        }
+    }
+
+    #[test]
+    fn for_each_au_walks_records() {
+        let mut sdu = vec![0u8; 22];
+        sdu.extend_from_slice(&[0, 0, 0, 0, 3, 0xA1, 0xA2, 0xA3]);
+        sdu.extend_from_slice(&[0, 0, 0, 0, 2, 0xB1, 0xB2]);
+        sdu.extend_from_slice(&[0, 0, 0, 0, 9, 0xC1]);
+        assert_eq!(aus(&sdu), vec![vec![0xA1, 0xA2, 0xA3], vec![0xB1, 0xB2]]);
+    }
+
+    #[test]
+    fn for_each_au_stops() {
+        let mut sdu = vec![0u8; 22];
+        assert!(aus(&sdu).is_empty());
+        sdu.extend_from_slice(&[0, 0, 0, 0]);
+        assert!(aus(&sdu).is_empty());
+        sdu.extend_from_slice(&[0, 0, 0, 0, 1, 0xD1]);
+        assert!(aus(&sdu).is_empty());
+    }
+
+    #[test]
+    fn route_diag_filters_opcodes() {
+        assert_eq!(
+            route_diag(&ONE_HOST),
+            Some((
+                0x2E,
+                "04 00 04 00 2e 00 01 00 01 20 bd 1d 72 90 9c 02 06".to_string()
+            ))
+        );
+        assert_eq!(route_diag(&anc_command(2)), None);
+        assert_eq!(route_diag(&ONE_HOST[..5]), None);
+        let mut bad = ONE_HOST;
+        bad[0] = 0x05;
+        assert_eq!(route_diag(&bad), None);
+    }
+}
