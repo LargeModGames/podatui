@@ -18,10 +18,14 @@ on:
     tags: ['windows-v*']
     paths:
       - 'windows/**'
+      - 'core/**'
+      - 'gate.ps1'
       - '.github/workflows/ci-windows.yml'
   pull_request:
     paths:
       - 'windows/**'
+      - 'core/**'
+      - 'gate.ps1'
       - '.github/workflows/ci-windows.yml'
   workflow_dispatch:
 
@@ -141,27 +145,32 @@ jobs:
             Write-Host "==> Freshly built $($d.Name) copied into $($d.Out)"
           }
 
-      # ---- Rust: daemon (native msvc target) ---------------------------------
+      # ---- Rust: core, ipc, daemon (native msvc target) ----------------------
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: windows/daemon -> target
+          workspaces: |
+            core -> target
+            windows/ipc -> target
+            windows/daemon -> target
 
       - name: Fetch FFmpeg (AAC-ELD decode libs — not vendored in git)
         shell: bash
         run: windows/daemon/fetch-ffmpeg.sh
 
-      - name: Build daemon (podatuid)
-        working-directory: windows/daemon
-        # Static CRT: otherwise the msvc build imports VCRUNTIME140.dll, which a
-        # clean Windows does not have, and the daemon won't start. (The FFmpeg
-        # DLLs only need the UCRT, which ships with Windows 10+.)
-        env:
-          RUSTFLAGS: -C target-feature=+crt-static
-        run: cargo build --release
+      # fmt, clippy -D warnings and tests for core, ipc and the daemon, then the
+      # daemon's release build (podatuid). That build uses a static CRT:
+      # otherwise the msvc build imports VCRUNTIME140.dll, which a clean Windows
+      # does not have, and the daemon won't start. (The FFmpeg DLLs only need
+      # the UCRT, which ships with Windows 10+.)
+      - name: Gate + build daemon (podatuid)
+        shell: pwsh
+        run: ./gate.ps1
 
       # ---- WinUI 3 app (unpackaged, self-contained) --------------------------
       # WinUI resource generation runs the PRI MSBuild task
