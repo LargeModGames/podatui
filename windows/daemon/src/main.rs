@@ -2232,7 +2232,10 @@ fn main() {
         let prox: Arc<Mutex<(bool, Instant)>> = Arc::new(Mutex::new((false, Instant::now())));
         thread::spawn(move || {
             le::watch_nearby(
-                move || {
+                move |s: le::Sighting| {
+                    if podatui_core::proximity::parse(&s.data).is_none() {
+                        return;
+                    }
                     let now = Instant::now();
                     let mut p = prox.lock().unwrap();
                     // A >45 s gap since the last advertisement means they went away;
