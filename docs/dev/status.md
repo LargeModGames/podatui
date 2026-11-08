@@ -54,8 +54,9 @@
 
 - Pro 3 does NOT echo control changes (opcode 0x09) after a command, only reports all values when
   the link opens (found on Linux). The Windows driver-mode keepalive sends an ANC command every
-  30 s and treats the echo as proof of life, so on a Pro 3 it would declare the link dead and show
-  "Restoring audio". Fix before driver mode ships: count any incoming packet as liveness.
+  30 s and already counts any incoming packet within 5 s as proof of life. Without the echo, a Pro 3
+  that sends nothing else in those 5 s would still be declared dead ("Restoring audio"). Check in
+  driver mode before it ships; the fix is a probe the Pro 3 does answer.
 - A listening-mode change sent while both buds are in the case seems to be ignored.
 - Mic re-arm only fires after 8 s of total AAP silence (`windows/daemon/src/main.rs`, the
   `last_data` check); if only the 0x58 audio stops while other packets flow, it never re-arms.
