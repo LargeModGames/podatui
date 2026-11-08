@@ -23,4 +23,12 @@ fn main() {
     println!("cargo:rustc-link-lib=avutil");
     println!("cargo:rustc-link-lib=swresample");
     println!("cargo:rerun-if-changed=src/eld_shim.c");
+
+    // Put the FFmpeg DLLs next to podatuid.exe so the build output runs as is.
+    let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let profile_dir = out.ancestors().nth(3).unwrap();
+    for entry in std::fs::read_dir(ff.join("bin")).unwrap() {
+        let dll = entry.unwrap().path();
+        std::fs::copy(&dll, profile_dir.join(dll.file_name().unwrap())).unwrap();
+    }
 }
