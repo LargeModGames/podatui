@@ -43,6 +43,9 @@
   frames, and the link reconnected once with the lid closed. Two addresses per pair, rotated
   together; only one advertises once both buds are worn. Byte 10 is 0x04 idle and 0x05 while the
   PC plays, flipping within one frame.
+- Lid bit 3 is not trustworthy on Pro 3 either: in the closed case the lid byte read 0x3a
+  (Closed) before the address rotation and 0x11 (parses as Open) after it. Pinned in
+  `core/tests/replay.rs`; §1.4 lid edges need another signal (X2b).
 - `RENDER` stayed 0 during spotatui playback because `any_render_active` skipped every session
   (`IsSystemSoundsSession` returns S_FALSE for normal sessions, which `.is_ok()` accepts). Fixed.
 - AirPods also pair to the laptop; disconnect one host before testing on the other.
