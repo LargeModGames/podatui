@@ -43,8 +43,8 @@
   frames, and the link reconnected once with the lid closed. Two addresses per pair, rotated
   together; only one advertises once both buds are worn. Byte 10 is 0x04 idle and 0x05 while the
   PC plays, flipping within one frame.
-- The probe's `RENDER` stayed 0 during spotatui playback, so render edges (needed for B4) are not
-  detected on this PC. Investigate before step 8.
+- `RENDER` stayed 0 during spotatui playback because `any_render_active` skipped every session
+  (`IsSystemSoundsSession` returns S_FALSE for normal sessions, which `.is_ok()` accepts). Fixed.
 - AirPods also pair to the laptop; disconnect one host before testing on the other.
 
 ## Known issues
