@@ -5,6 +5,7 @@
 //! are the active output). This is Windows audio, independent of the AAP driver.
 
 use windows::core::Interface;
+use windows::Win32::Foundation::S_OK;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
     eConsole, eRender, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2,
@@ -117,7 +118,7 @@ pub fn any_render_active() -> bool {
             }
             // Skip the system-sounds session (tier 3).
             if let Ok(s2) = session.cast::<IAudioSessionControl2>() {
-                if s2.IsSystemSoundsSession().is_ok() {
+                if s2.IsSystemSoundsSession() == S_OK {
                     continue;
                 }
             }
