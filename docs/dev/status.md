@@ -28,14 +28,23 @@
 
 ## Hardware facts (owner's AirPods Pro 3, "AirPods Pro van Jay - Find My")
 
-- PID 0x2027 and VID 0x004C sit on every BTHENUM service devnode (key `{2BD67D8B-...} 8` / `7`),
-  not on the `DEV_<MAC>` node. Container ID is shared by all 9 devnodes. The AAP devnode exists.
-- HFP battery (`{104EA319-...} 2` on the `{0000111E}` node) was absent while disconnected; value
-  while connected is unknown.
+- PID 0x2027 and VID 0x004C sit on every BTHENUM service devnode (key `{2BD67D8B-...} 8` / `7`);
+  on the `DEV_<MAC>` node only while connected (see below). Container ID is shared by all 9 devnodes. The AAP devnode exists.
+- While connected (2026-11-08), the `DEV_<MAC>` node does carry PID 8231 (0x2027) and VID 76
+  (0x004C), so X1's model gate passes on the DEV node itself.
+- HFP battery (`{104EA319-...} 2` on the `{0000111E}` node) is empty both while disconnected and
+  while connected, so the Weak tier cannot show an HFP battery.
 - A 60 s probe with the buds disconnected saw only type 0x07, len 0x11, prefix 0x06 frames (no
   status frames); X2 still has to capture real status frames.
-- The owner's Windows PC (MSI B650 TOMAHAWK WIFI, MediaTek RZ616) has no Wi-Fi/BT antenna
-  attached, so its AirPods link drops every 1-2 minutes. Do not judge stability there.
+- The owner's Windows PC (MSI B650 TOMAHAWK WIFI, MediaTek RZ616) has had a magnetic antenna on
+  the BT port since 2026-11-08. A 90 s probe while connected saw no ACL drop, status frames
+  (type 0x07, len 0x19, prefix 0x01) about once a second, and RSSI -54 to -63 dBm (dips to -71).
+- X2a/X2c/X2d (2026-11-08, `probe-20261108T130219Z.txt`): the closed case keeps sending status
+  frames, and the link reconnected once with the lid closed. Two addresses per pair, rotated
+  together; only one advertises once both buds are worn. Byte 10 is 0x04 idle and 0x05 while the
+  PC plays, flipping within one frame.
+- The probe's `RENDER` stayed 0 during spotatui playback, so render edges (needed for B4) are not
+  detected on this PC. Investigate before step 8.
 - AirPods also pair to the laptop; disconnect one host before testing on the other.
 
 ## Known issues
