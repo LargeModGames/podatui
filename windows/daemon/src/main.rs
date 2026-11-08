@@ -15,6 +15,7 @@ mod bt;
 mod devnode;
 mod driver;
 mod eld;
+mod endpoint;
 mod gatt;
 mod hearing;
 mod hrdb;
@@ -2174,6 +2175,28 @@ fn poll_pairing(ctx: Ctx) {
     }
 }
 
+/// Driverless: keep `audio_connected` in step with our render endpoint.
+fn watch_audio_endpoint(ctx: Ctx) {
+    volume::init();
+    let (mut mac, mut container) = (0, None);
+    loop {
+        if ctx.mac() != mac {
+            mac = ctx.mac();
+            container = bt::device_props(mac).container;
+        }
+        let active = container.is_some_and(endpoint::render_active);
+        let changed = {
+            let mut s = ctx.state.lock().unwrap();
+            std::mem::replace(&mut s.audio_connected, active) != active
+        };
+        if changed {
+            log(&format!("endpoint: audio_connected={active}"));
+            ctx.push_state();
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
+}
+
 fn main() {
     if std::env::args().any(|a| a == "--probe") {
         return probe::run();
@@ -2328,6 +2351,10 @@ fn main() {
     if mode == Mode::Driverless && mac == 0 {
         let c = ctx.clone();
         thread::spawn(move || poll_pairing(c));
+    }
+    if mode == Mode::Driverless {
+        let c = ctx.clone();
+        thread::spawn(move || watch_audio_endpoint(c));
     }
     // Volume poller: keep the Snapshot's volume/mute fresh (the daemon owns
     // volume) so the tray renders it — runs regardless of a paired device.
