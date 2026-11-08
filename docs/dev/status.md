@@ -1,4 +1,4 @@
-# Status (2026-11-06)
+# Status (2026-11-08)
 
 ## Done
 
@@ -16,13 +16,18 @@
   5. `core::ear` pause decisions
   6. Driverless daemon mode (picked at startup from the `PodatuiAAP` service key)
   7. IPC fields: `driverless`, `audio_connected`, `ble_match`, `product_id`, richer `ConnectPrompt`
+  8. `endpoint.rs` container join; `audio_connected` and the probe's EP lines poll it every 500 ms
+     instead of the plan's `IMMNotificationClient`. Seen as EP 1 while connected; the flip on a
+     Settings connect/disconnect is not checked yet.
+  9. Partly: replay harness and fixtures for X2a/c/d. X2b, X2e-h, X4 and X6 still open.
 - Linux (laptop session): BlueZ daemon in `linux/daemon`, TUI in `tui/` (`tui-design.md`).
 
 ## Next
 
-- Windows driverless steps 8-19 need the owner's AirPods for experiments X1-X6 (section 6 of the
-  plan): endpoint join, podmatch Tracker, WinUI driverless UI, installer without Test Mode
-  (release R1), KS oneshot connect, default endpoint, BLE ear pause, power handling.
+- X2b (lid open/close at distances) first: the Tracker's lid edges (step 10) need a signal other
+  than lid bit 3. Then X2e (30 min worn).
+- Windows driverless steps 10-19: podmatch Tracker, WinUI driverless UI, installer without Test
+  Mode (release R1), KS oneshot connect, default endpoint, BLE ear pause, power handling.
 - Core split steps 6-14 (policy into core) are on hold until Windows has a driver again.
 - Linux-first: BlueZ backend and TUI on the shared core.
 
