@@ -13,7 +13,7 @@ use podatui_core::proximity;
 use windows_sys::Win32::Storage::FileSystem::{GetFileType, FILE_TYPE_DISK, FILE_TYPE_PIPE};
 use windows_sys::Win32::System::Console::{AllocConsole, GetStdHandle, STD_OUTPUT_HANDLE};
 
-use crate::{bt, le, utc_timestamp, volume};
+use crate::{bt, endpoint, le, utc_timestamp, volume};
 
 /// Proximity pairing and nearby action records.
 const LOGGED: [u8; 2] = [0x07, 0x0F];
@@ -142,12 +142,22 @@ pub fn run() {
         let out = out.clone();
         thread::spawn(move || {
             volume::init();
-            let (mut render, mut acl) = (None, None);
+            let container = (mac != 0)
+                .then(|| bt::device_props(mac).container)
+                .flatten();
+            let (mut render, mut acl, mut ep) = (None, None, None);
             for tick in (0..ACL_EVERY).cycle() {
                 let playing = volume::any_render_active();
                 if render != Some(playing) {
                     render = Some(playing);
                     out.lock().unwrap().event(Event::Render(playing));
+                }
+                if let Some(c) = container {
+                    let active = endpoint::render_active(c);
+                    if ep != Some(active) {
+                        ep = Some(active);
+                        out.lock().unwrap().event(Event::Ep(active));
+                    }
                 }
                 if mac != 0 && tick == 0 {
                     let up = bt::is_connected(mac);
